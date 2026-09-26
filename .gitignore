@@ -9,7 +9,7 @@ coverage/
 .DS_Store
 Thumbs.db
 .playwright-mcp/
-video_production/raw_clips/
-video_production/test_record/
+video_production/
 *.mp4
 *.webm
+NER-MIND_SIH_*
