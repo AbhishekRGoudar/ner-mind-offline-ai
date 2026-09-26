@@ -10,6 +10,8 @@ coverage/
 Thumbs.db
 .playwright-mcp/
 video_production/
+scripts/
+*.py
 *.mp4
 *.webm
 NER-MIND_SIH_*
