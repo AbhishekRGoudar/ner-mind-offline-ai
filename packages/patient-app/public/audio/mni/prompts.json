@@ -1,0 +1,13 @@
+{
+  "language": "mni",
+  "name": "Manipuri (Meitei)",
+  "prompts": {
+    "welcome": { "text": "NER-Mind da tarananbom oirasanu. Eikhoi chatharasi.", "file": "welcome.mp3" },
+    "instructions": { "text": "Thabak asibu munna yengbiyu amasung takpiriba adumai toubiyu.", "file": "instructions.mp3" },
+    "success": { "text": "Yamna fajei! Thabak asi maipakna loire.", "file": "success.mp3" },
+    "retry": { "text": "Amuk hanna hotnasi. Nungsit tana changsinbiyu.", "file": "retry.mp3" },
+    "encouragement": { "text": "Nangi thoudang yamna fajana chatli. Fana touri!", "file": "encouragement.mp3" },
+    "navigation": { "text": "Changsinnaba mathanggi button da nambiyu.", "file": "navigation.mp3" },
+    "status": { "text": "Internet leidare. Lairik sing khomjillaga pumnamak leijare.", "file": "status.mp3" }
+  }
+}

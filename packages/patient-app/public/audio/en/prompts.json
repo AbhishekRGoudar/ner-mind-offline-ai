@@ -1,0 +1,36 @@
+{
+  "language": "en",
+  "name": "English",
+  "isNativeRecording": false,
+  "notes": "Architecture placeholder for studio audio recordings; Web Speech fallback active.",
+  "prompts": {
+    "welcome": {
+      "text": "Welcome to your cognitive companion. What activity would you like to do today?",
+      "audioFile": "/audio/en/welcome.mp3"
+    },
+    "instructions": {
+      "text": "Follow the steps on screen at your own comfortable pace.",
+      "audioFile": "/audio/en/instructions.mp3"
+    },
+    "success": {
+      "text": "Well done! You have successfully completed this activity.",
+      "audioFile": "/audio/en/success.mp3"
+    },
+    "retry": {
+      "text": "Take your time. Let us try this step once again.",
+      "audioFile": "/audio/en/retry.mp3"
+    },
+    "encouragement": {
+      "text": "You are doing great. Keep up the wonderful effort.",
+      "audioFile": "/audio/en/encouragement.mp3"
+    },
+    "navigation": {
+      "text": "Returning to the main companion menu.",
+      "audioFile": "/audio/en/navigation.mp3"
+    },
+    "status": {
+      "text": "All your progress is securely saved on this device.",
+      "audioFile": "/audio/en/status.mp3"
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "name": "NER-Mind: Cognitive & Memory Companion",
+  "short_name": "NER-Mind",
+  "description": "AI-Based Cognitive Gaming & Memory Assistance Platform for Elderly Patients in North Eastern Region (SIH 26003)",
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "window-controls-overlay"],
+  "background_color": "#070d1e",
+  "theme_color": "#0c162f",
+  "orientation": "any",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["medical", "health", "education", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Daily Cognitive Training",
+      "short_name": "Training",
+      "description": "Start today's personalized cognitive activity",
+      "url": "/?tab=training"
+    },
+    {
+      "name": "Real-Life Transfer Protocol",
+      "short_name": "Transfer",
+      "description": "Verify everyday task transfer progress",
+      "url": "/?tab=transfer"
+    }
+  ]
+}

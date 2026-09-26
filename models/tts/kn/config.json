@@ -1,0 +1,10 @@
+{
+  "language": "kn",
+  "sample_rate": 22050,
+  "n_mel_channels": 80,
+  "speakers": [
+    "female",
+    "male"
+  ],
+  "default_speaker": "female"
+}

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="36" fill="#0c162f"/>
+  <circle cx="96" cy="96" r="72" fill="#16223f" stroke="#38bdf8" stroke-width="4"/>
+  <!-- Stylized Brain / Synapse Nodes -->
+  <path d="M72 80 C60 80, 52 90, 56 102 C60 114, 72 116, 76 124 C80 132, 92 136, 96 136 C100 136, 112 132, 116 124 C120 116, 132 114, 136 102 C140 90, 132 80, 120 80 C114 80, 110 72, 96 72 C82 72, 78 80, 72 80 Z" fill="none" stroke="#38bdf8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Central Memory Core -->
+  <circle cx="96" cy="96" r="14" fill="#38bdf8"/>
+  <circle cx="76" cy="92" r="6" fill="#a855f7"/>
+  <circle cx="116" cy="92" r="6" fill="#a855f7"/>
+  <circle cx="84" cy="116" r="6" fill="#34d399"/>
+  <circle cx="108" cy="116" r="6" fill="#34d399"/>
+  <!-- Synapse Lines -->
+  <line x1="96" y1="96" x2="76" y2="92" stroke="#e2e8f0" stroke-width="3"/>
+  <line x1="96" y1="96" x2="116" y2="92" stroke="#e2e8f0" stroke-width="3"/>
+  <line x1="96" y1="96" x2="84" y2="116" stroke="#e2e8f0" stroke-width="3"/>
+  <line x1="96" y1="96" x2="108" y2="116" stroke="#e2e8f0" stroke-width="3"/>
+</svg>

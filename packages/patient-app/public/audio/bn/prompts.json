@@ -1,0 +1,36 @@
+{
+  "language": "bn",
+  "name": "বাংলা (Bengali)",
+  "isNativeRecording": false,
+  "notes": "Architecture placeholder for studio audio recordings; Web Speech fallback active.",
+  "prompts": {
+    "welcome": {
+      "text": "আপনার সঙ্গীতে স্বাগতম। আজ আপনি কোন কাজটি করতে চান?",
+      "audioFile": "/audio/bn/welcome.mp3"
+    },
+    "instructions": {
+      "text": "পর্দার নির্দেশাবলী আপনার সুবিধাজনক গতিতে অনুসরণ করুন।",
+      "audioFile": "/audio/bn/instructions.mp3"
+    },
+    "success": {
+      "text": "খুব ভালো হয়েছে! আপনি কাজটি সফলভাবে সম্পন্ন করেছেন।",
+      "audioFile": "/audio/bn/success.mp3"
+    },
+    "retry": {
+      "text": "ধীরে সুস্থে করুন। আসুন আমরা আবার চেষ্টা করি।",
+      "audioFile": "/audio/bn/retry.mp3"
+    },
+    "encouragement": {
+      "text": "আপনি খুব ভালো করছেন। এভাবেই চালিয়ে যান।",
+      "audioFile": "/audio/bn/encouragement.mp3"
+    },
+    "navigation": {
+      "text": "প্রধান মেনুতে ফিরে যাওয়া হচ্ছে।",
+      "audioFile": "/audio/bn/navigation.mp3"
+    },
+    "status": {
+      "text": "আপনার সমস্ত তথ্য এই ডিভাইসে সুরক্ষিত আছে।",
+      "audioFile": "/audio/bn/status.mp3"
+    }
+  }
+}

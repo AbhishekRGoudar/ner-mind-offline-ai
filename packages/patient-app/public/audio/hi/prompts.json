@@ -1,0 +1,36 @@
+{
+  "language": "hi",
+  "name": "हिन्दी (Hindi)",
+  "isNativeRecording": false,
+  "notes": "Architecture placeholder for studio audio recordings; Web Speech fallback active.",
+  "prompts": {
+    "welcome": {
+      "text": "आपके साथी में आपका स्वागत है। आज आप कौन सा अभ्यास करना चाहेंगे?",
+      "audioFile": "/audio/hi/welcome.mp3"
+    },
+    "instructions": {
+      "text": "स्क्रीन पर दिए गए निर्देशों का अपनी गति से पालन करें।",
+      "audioFile": "/audio/hi/instructions.mp3"
+    },
+    "success": {
+      "text": "बहुत बढ़िया! आपने यह अभ्यास सफलतापूर्वक पूरा किया।",
+      "audioFile": "/audio/hi/success.mp3"
+    },
+    "retry": {
+      "text": "आराम से करें। आइए एक बार फिर प्रयास करते हैं।",
+      "audioFile": "/audio/hi/retry.mp3"
+    },
+    "encouragement": {
+      "text": "आप बहुत अच्छा कर रहे हैं। ऐसे ही आगे बढ़ते रहें।",
+      "audioFile": "/audio/hi/encouragement.mp3"
+    },
+    "navigation": {
+      "text": "मुख्य पृष्ठ पर वापस जा रहे हैं।",
+      "audioFile": "/audio/hi/navigation.mp3"
+    },
+    "status": {
+      "text": "आपकी सभी जानकारी इस उपकरण पर सुरक्षित रखी गई है।",
+      "audioFile": "/audio/hi/status.mp3"
+    }
+  }
+}

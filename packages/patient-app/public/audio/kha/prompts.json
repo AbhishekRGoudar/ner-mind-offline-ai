@@ -1,0 +1,13 @@
+{
+  "language": "kha",
+  "name": "Khasi",
+  "prompts": {
+    "welcome": { "text": "Khublei bad sngewbha sha NER-Mind. To ngin sdang.", "file": "welcome.mp3" },
+    "instructions": { "text": "Peit bha ia ka kam bad bud ia ki jingbthah.", "file": "instructions.mp3" },
+    "success": { "text": "Ka bha shibun! Phi la dep bha ia kane ka kam.", "file": "success.mp3" },
+    "retry": { "text": "To pyrshang biang. Phin sa lah kham bha.", "file": "retry.mp3" },
+    "encouragement": { "text": "Phi trei bha shibun. Nang iaid shaphrang!", "file": "encouragement.mp3" },
+    "navigation": { "text": "Shon ia u button ban iaid sha khmat.", "file": "navigation.mp3" },
+    "status": { "text": "Ym don internet. Ki jingtip ki sah beit hapoh phone.", "file": "status.mp3" }
+  }
+}

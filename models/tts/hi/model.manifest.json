@@ -1,0 +1,22 @@
+{
+  "modelFamily": "AI4Bharat Indic-TTS",
+  "language": "hi",
+  "locale": "hi-IN",
+  "version": "1.0.0",
+  "acousticModel": "FastPitch (Multi-speaker female/male)",
+  "vocoderModel": "HiFi-GAN",
+  "officialSource": "https://github.com/AI4Bharat/Indic-TTS/releases/download/v1-checkpoints-release/hi.zip",
+  "archiveName": "hi.zip",
+  "expectedFiles": [
+    "model.manifest.json",
+    "config.json",
+    "phonemes.json",
+    "fastpitch/checkpoint_fastpitch.pth",
+    "hifigan/best_model.pth"
+  ],
+  "sampleRate": 22050,
+  "testPhrase": "नमस्ते, मैं आपकी सहायता के लिए यहाँ हूँ।",
+  "installedAt": "2026-09-24T14:10:29.040Z",
+  "status": "INSTALLED",
+  "offlineCapable": true
+}

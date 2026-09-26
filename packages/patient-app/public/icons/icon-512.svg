@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#0c162f"/>
+  <circle cx="256" cy="256" r="192" fill="#16223f" stroke="#38bdf8" stroke-width="10"/>
+  <!-- Stylized Brain / Synapse Nodes -->
+  <path d="M192 213 C160 213, 138 240, 149 272 C160 304, 192 309, 202 330 C213 352, 245 362, 256 362 C266 362, 298 352, 309 330 C320 309, 352 304, 362 272 C373 240, 352 213, 320 213 C304 213, 293 192, 256 192 C218 192, 208 213, 192 213 Z" fill="none" stroke="#38bdf8" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Central Memory Core -->
+  <circle cx="256" cy="256" r="38" fill="#38bdf8"/>
+  <circle cx="202" cy="245" r="16" fill="#a855f7"/>
+  <circle cx="309" cy="245" r="16" fill="#a855f7"/>
+  <circle cx="224" cy="309" r="16" fill="#34d399"/>
+  <circle cx="288" cy="309" r="16" fill="#34d399"/>
+  <!-- Synapse Lines -->
+  <line x1="256" y1="256" x2="202" y2="245" stroke="#e2e8f0" stroke-width="8"/>
+  <line x1="256" y1="256" x2="309" y2="245" stroke="#e2e8f0" stroke-width="8"/>
+  <line x1="256" y1="256" x2="224" y2="309" stroke="#e2e8f0" stroke-width="8"/>
+  <line x1="256" y1="256" x2="288" y2="309" stroke="#e2e8f0" stroke-width="8"/>
+</svg>

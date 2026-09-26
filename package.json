@@ -1,0 +1,24 @@
+{
+  "name": "ner-mind",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-Based Cognitive Gaming and Memory Assistance Platform for Elderly Dementia Patients in NER (SIH 26003)",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "keywords": [
+    "cognitive-health",
+    "elderly-care",
+    "offline-first",
+    "adaptive-learning",
+    "sih26003"
+  ],
+  "author": "SIH Team 26003",
+  "license": "UNLICENSED"
+}

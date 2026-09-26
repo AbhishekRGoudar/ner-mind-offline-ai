@@ -1,0 +1,20 @@
+{
+  "modelFamily": "AI4Bharat IndicConformer ASR",
+  "language": "kn",
+  "locale": "kn-IN",
+  "version": "1.0.0",
+  "architecture": "Hybrid CTC + RNNT Conformer-Large (120M parameters)",
+  "officialSource": "ai4bharat/indicconformer_stt_kn_hybrid_ctc_rnnt_large",
+  "downloadUrl": "https://huggingface.co/ai4bharat/indicconformer_stt_kn_hybrid_ctc_rnnt_large",
+  "expectedFiles": [
+    "model.manifest.json",
+    "config.yaml",
+    "tokenizer.model",
+    "model.nemo"
+  ],
+  "sampleRate": 16000,
+  "channels": 1,
+  "installedAt": "2026-09-24T14:10:29.037Z",
+  "status": "INSTALLED",
+  "offlineCapable": true
+}

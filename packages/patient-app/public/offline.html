@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NER-Mind: Offline Companion</title>
+    <style>
+      :root {
+        --bg-main: #070d1e;
+        --card-bg: #111d38;
+        --accent-cyan: #38bdf8;
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background-color: var(--bg-main);
+        color: var(--text-main);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      .offline-card {
+        background: var(--card-bg);
+        border: 3px solid var(--accent-cyan);
+        border-radius: 16px;
+        padding: 36px 28px;
+        max-width: 540px;
+        text-align: center;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+      }
+      .offline-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+      }
+      h1 {
+        font-size: 32px;
+        margin: 0 0 16px 0;
+        color: var(--accent-cyan);
+      }
+      p {
+        font-size: 20px;
+        line-height: 1.6;
+        color: var(--text-main);
+        margin: 0 0 24px 0;
+      }
+      .notice-badge {
+        display: inline-block;
+        background: rgba(56, 189, 248, 0.15);
+        color: var(--accent-cyan);
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 24px;
+      }
+      .action-btn {
+        background: var(--accent-cyan);
+        color: #070d1e;
+        border: none;
+        border-radius: 12px;
+        font-size: 20px;
+        font-weight: 700;
+        padding: 16px 32px;
+        cursor: pointer;
+        min-height: 56px;
+        min-width: 240px;
+        transition: transform 0.15s ease, background-color 0.15s ease;
+      }
+      .action-btn:hover {
+        background: #7dd3fc;
+        transform: translateY(-2px);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="offline-card">
+      <div class="offline-icon">🟢 🧠</div>
+      <h1>Offline Companion Active</h1>
+      <div class="notice-badge">All Local Data Preserved</div>
+      <p>
+        No internet connection detected right now. Your cognitive activities, personalized routines, and personal memory profile remain fully accessible on this device.
+      </p>
+      <p style="color: var(--text-muted); font-size: 16px;">
+        When an internet connection becomes available, your progress will automatically synchronize with your caregiver.
+      </p>
+      <button class="action-btn" onclick="window.location.href='/'">
+        Open Companion ➡️
+      </button>
+    </div>
+  </body>
+</html>

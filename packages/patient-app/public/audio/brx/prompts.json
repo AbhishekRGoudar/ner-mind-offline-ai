@@ -1,0 +1,13 @@
+{
+  "language": "brx",
+  "name": "Bodo",
+  "prompts": {
+    "welcome": { "text": "NER-Mind आव बरायबाय। फै जों जागायदिनि।", "file": "welcome.mp3" },
+    "instructions": { "text": "मावनायखौ मोजाङै नाय आरो बिथोनखौ मानिना चोल।", "file": "instructions.mp3" },
+    "success": { "text": "जोबोद मोजां जादों! नोंथाङा हासिबबाय।", "file": "success.mp3" },
+    "retry": { "text": "आर' खनसे नाजाफिन। नोंथाङा हागोन।", "file": "retry.mp3" },
+    "encouragement": { "text": "मोजां मावफुंदों। साबसिन बाङाव फै।", "file": "encouragement.mp3" },
+    "navigation": { "text": "सिगां थांनो बाथोनआव थु।", "file": "navigation.mp3" },
+    "status": { "text": "इन्तारनेथ गैया। गासै फोरमानखौ साच'ना दोनदों।", "file": "status.mp3" }
+  }
+}

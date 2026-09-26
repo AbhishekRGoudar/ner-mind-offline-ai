@@ -1,0 +1,36 @@
+{
+  "language": "as",
+  "name": "অসমীয়া (Assamese)",
+  "isNativeRecording": false,
+  "notes": "Architecture placeholder for studio audio recordings; Web Speech fallback active.",
+  "prompts": {
+    "welcome": {
+      "text": "আপোনাৰ মনৰ সংগীলৈ স্বাগতম। আজি আপুনি কি কাম কৰিব বিচাৰে?",
+      "audioFile": "/audio/as/welcome.mp3"
+    },
+    "instructions": {
+      "text": "পৰ্দাত দিয়া নিৰ্দেশনা নিজৰ সুবিধাজনক গতিত পালন কৰক।",
+      "audioFile": "/audio/as/instructions.mp3"
+    },
+    "success": {
+      "text": "বৰ ভাল হৈছে! আপুনি এই কাৰ্য্য সফলতাৰে সমাপ্ত কৰিলে।",
+      "audioFile": "/audio/as/success.mp3"
+    },
+    "retry": {
+      "text": "ধীৰে ধীৰে কৰক। আহক আমি আকৌ এবাৰ চেষ্টা কৰোঁ।",
+      "audioFile": "/audio/as/retry.mp3"
+    },
+    "encouragement": {
+      "text": "আপুনি বহুত ভাল কৰিছে। এনেকৈয়ে আগবাঢ়ি যাওক।",
+      "audioFile": "/audio/as/encouragement.mp3"
+    },
+    "navigation": {
+      "text": "মূল পৃষ্ঠালৈ ঘূৰি যোৱা হৈছে।",
+      "audioFile": "/audio/as/navigation.mp3"
+    },
+    "status": {
+      "text": "আপোনাৰ সকলো তথ্য এই যন্ত্ৰত সুৰক্ষিতভাৱে ৰখা হৈছে।",
+      "audioFile": "/audio/as/status.mp3"
+    }
+  }
+}

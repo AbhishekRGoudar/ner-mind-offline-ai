@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.cache/
+*.log
+.env
+.env.local
+coverage/
+.DS_Store
+Thumbs.db
+.playwright-mcp/
+video_production/raw_clips/
+video_production/test_record/
+*.mp4
+*.webm
