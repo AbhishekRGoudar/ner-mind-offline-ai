@@ -10,40 +10,53 @@ interface Props {
   onComplete: (observation: CognitiveObservation) => void;
   onExit: () => void;
   isSessionMode?: boolean;
+  sessionFingerprints?: string[];
 }
 
-export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMode = false, onComplete, onExit, isSessionMode = false }) => {
+export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMode = false, onComplete, onExit, isSessionMode = false, sessionFingerprints = [] }) => {
   const { language } = useLocalization();
   const [task, setTask] = useState<GeneratedCognitiveTask | null>(null);
   const questionDisplayedAt = React.useRef<number>(performance.now());
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const hasSelectedRef = React.useRef<boolean>(false);
+  const timerRef = React.useRef<any>(null);
 
   useEffect(() => {
+    hasSelectedRef.current = false;
     const recent = OfflineStorageService.getRecentTaskFingerprints(undefined, 'calculation');
+    const combinedRecent = Array.from(new Set([...(sessionFingerprints || []), ...recent]));
     const boundedDiff = Math.max(1, Math.min(5, difficulty)) as 1 | 2 | 3 | 4 | 5;
     const generated = TaskGenerator.generateTask({
       domain: 'calculation',
       difficulty: boundedDiff,
       masteryMode,
-      recentFingerprints: recent,
+      recentFingerprints: combinedRecent,
       language,
     });
 
     setTask(generated);
+    setSelectedOption(null);
     questionDisplayedAt.current = performance.now();
     if (!isSessionMode) {
       SpeechService.speakDomainInstruction('calculation');
     }
-  }, [difficulty, language]);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, [difficulty, language, sessionFingerprints]);
 
   if (!task) {
-    return <div style={{ padding: 24, color: '#fff' }}>Generating personalized market calculation...</div>;
+    return <div style={{ padding: 24, color: '#1E293B', fontSize: 18 }}>Generating personalized market calculation...</div>;
   }
 
   const { itemsPurchased, totalBill, paidAmount, correctChange, options } = task.payload;
 
   const handleSelect = (val: number) => {
-    if (selectedOption !== null) return;
+    if (hasSelectedRef.current || selectedOption !== null) return;
+    hasSelectedRef.current = true;
     setSelectedOption(val);
     const elapsed = Math.max(0, Math.round(performance.now() - questionDisplayedAt.current));
     const scoreResult = task.scoring(val);
@@ -77,9 +90,13 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
     if (!isSessionMode) {
       SpeechService.speakFeedback(scoreResult.rawScore === 1.0 ? 'correct' : 'incorrect');
     }
-    setTimeout(() => {
+    const delay = isSessionMode ? 700 : 1600;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    timerRef.current = setTimeout(() => {
       onComplete(observation);
-    }, 1500);
+    }, delay);
   };
 
   return (
@@ -89,7 +106,7 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
           <div>
             <span className="badge badge-success">Domain: Calculation</span>
             <span className="badge badge-info" style={{ marginLeft: 8 }}>Level {task.difficulty}</span>
-            <span className="badge" style={{ marginLeft: 8, background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+            <span className="badge" style={{ marginLeft: 8, background: '#E2E8F0', color: '#475569' }}>
               Complexity: {task.complexity.overallComplexity} / 10
             </span>
           </div>
@@ -99,39 +116,40 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
         </div>
       )}
 
-      <h2 style={{ fontSize: 26, margin: '0 0 8px 0', color: 'var(--accent-cyan)' }}>
+      <h2 style={{ fontSize: 26, margin: '0 0 12px 0', color: '#123B63', fontWeight: 800 }}>
         {task.title}
       </h2>
 
       {/* Transaction Summary Card */}
       <div style={{
-        background: 'rgba(255,255,255,0.06)',
-        border: '2px solid rgba(56, 189, 248, 0.4)',
-        borderRadius: 12,
-        padding: 20,
+        background: '#F0F9FF',
+        border: '2px solid #BAE6FD',
+        borderRadius: 16,
+        padding: 22,
         marginBottom: 24,
+        boxShadow: '0 2px 8px rgba(3, 105, 161, 0.06)',
       }}>
-        <div style={{ fontSize: 16, color: 'var(--accent-cyan)', marginBottom: 8, fontWeight: 700 }}>
+        <div style={{ fontSize: 16, color: '#0369A1', marginBottom: 12, fontWeight: 800, letterSpacing: '0.04em' }}>
           MARKET PURCHASE BREAKDOWN:
         </div>
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 14 }}>
           {itemsPurchased.map((item: any, idx: number) => (
-            <div key={idx} style={{ fontSize: 18, color: '#fff', margin: '4px 0' }}>
-              • {item.quantity}x {item.name} = <strong>₹{item.totalPrice}</strong>
+            <div key={idx} style={{ fontSize: 18, color: '#1E293B', margin: '6px 0', fontWeight: 600 }}>
+              • {item.quantity}x {item.name} = <strong style={{ color: '#0F172A', fontWeight: 800 }}>₹{item.totalPrice}</strong>
             </div>
           ))}
         </div>
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 20, color: 'var(--text-muted)' }}>Total Bill:</span>
-          <span style={{ fontSize: 22, fontWeight: 700, color: '#fff' }}>₹{totalBill}</span>
+        <div style={{ borderTop: '2px solid #E0F2FE', paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 20, color: '#334155', fontWeight: 700 }}>Total Bill:</span>
+          <span style={{ fontSize: 24, fontWeight: 800, color: '#0F172A' }}>₹{totalBill}</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-          <span style={{ fontSize: 20, color: 'var(--text-muted)' }}>Currency Paid:</span>
-          <span style={{ fontSize: 22, fontWeight: 700, color: '#10b981' }}>₹{paidAmount}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+          <span style={{ fontSize: 20, color: '#334155', fontWeight: 700 }}>Currency Paid:</span>
+          <span style={{ fontSize: 24, fontWeight: 800, color: '#059669' }}>₹{paidAmount}</span>
         </div>
       </div>
 
-      <h3 style={{ fontSize: 22, textAlign: 'center', marginBottom: 20, color: 'var(--text-main)' }}>
+      <h3 style={{ fontSize: 22, textAlign: 'center', marginBottom: 20, color: '#0F172A', fontWeight: 800 }}>
         What change should you receive back?
       </h3>
 
@@ -143,16 +161,26 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
         {options.map((val: number) => {
           const isSelected = selectedOption === val;
           const isCorrect = val === correctChange;
-          let borderStyle = '2px solid rgba(255,255,255,0.2)';
-          let bgStyle = 'rgba(255,255,255,0.08)';
+          let borderStyle = '2.5px solid #CBD5E1';
+          let bgStyle = '#FFFFFF';
+          let textColor = '#0F172A';
+          let boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
 
           if (selectedOption !== null) {
             if (isCorrect) {
-              borderStyle = '3px solid #10b981';
-              bgStyle = 'rgba(16, 185, 129, 0.25)';
+              borderStyle = '3px solid #10B981';
+              bgStyle = '#ECFDF5';
+              textColor = '#065F46';
+              boxShadow = '0 4px 16px rgba(16, 185, 129, 0.25)';
             } else if (isSelected && !isCorrect) {
-              borderStyle = '3px solid #ef4444';
-              bgStyle = 'rgba(239, 68, 68, 0.25)';
+              borderStyle = '3px solid #EF4444';
+              bgStyle = '#FEF2F2';
+              textColor = '#991B1B';
+              boxShadow = '0 4px 16px rgba(239, 68, 68, 0.25)';
+            } else {
+              borderStyle = '1.5px solid #E2E8F0';
+              bgStyle = '#F8FAFC';
+              textColor = '#94A3B8';
             }
           }
 
@@ -160,16 +188,17 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
             <button
               key={val}
               onClick={() => handleSelect(val)}
-              disabled={selectedOption !== null}
+              disabled={selectedOption !== null || hasSelectedRef.current}
               style={{
                 background: bgStyle,
                 border: borderStyle,
-                borderRadius: 12,
+                borderRadius: 14,
                 padding: '24px 16px',
                 fontSize: 32,
-                fontWeight: 700,
-                color: '#fff',
-                cursor: selectedOption !== null ? 'default' : 'pointer',
+                fontWeight: 800,
+                color: textColor,
+                boxShadow,
+                cursor: (selectedOption !== null || hasSelectedRef.current) ? 'default' : 'pointer',
                 transition: 'all 0.15s ease',
                 position: 'relative',
               }}
@@ -183,11 +212,11 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
                   background: '#EF4444',
                   color: '#FFFFFF',
                   borderRadius: 6,
-                  padding: '1px 6px',
-                  fontSize: 11,
+                  padding: '2px 8px',
+                  fontSize: 12,
                   fontWeight: 800,
                 }}>
-                  ✕ Wrong
+                  ✕ Incorrect
                 </div>
               )}
               {selectedOption !== null && isCorrect && (
@@ -198,8 +227,8 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
                   background: '#10B981',
                   color: '#FFFFFF',
                   borderRadius: 6,
-                  padding: '1px 6px',
-                  fontSize: 11,
+                  padding: '2px 8px',
+                  fontSize: 12,
                   fontWeight: 800,
                 }}>
                   ✓ Correct
@@ -216,11 +245,11 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
           backgroundColor: '#FEE2E2',
           border: '2px solid #EF4444',
           color: '#991B1B',
-          padding: '14px 18px',
+          padding: '16px 20px',
           borderRadius: 14,
-          marginTop: 20,
+          marginTop: 22,
           textAlign: 'center',
-          fontSize: 17,
+          fontSize: 18,
           fontWeight: 700,
         }}>
           ❌ That was incorrect. You selected <strong>₹{selectedOption}</strong>. The correct change is <strong>₹{paidAmount} - ₹{totalBill} = ₹{correctChange}</strong>.
@@ -231,11 +260,11 @@ export const CalculationMarketChange: React.FC<Props> = ({ difficulty, masteryMo
           backgroundColor: '#DCFCE7',
           border: '2px solid #10B981',
           color: '#166534',
-          padding: '14px 18px',
+          padding: '16px 20px',
           borderRadius: 14,
-          marginTop: 20,
+          marginTop: 22,
           textAlign: 'center',
-          fontSize: 17,
+          fontSize: 18,
           fontWeight: 700,
         }}>
           ✅ That's correct! ₹{paidAmount} - ₹{totalBill} = <strong>₹{correctChange}</strong> returned.

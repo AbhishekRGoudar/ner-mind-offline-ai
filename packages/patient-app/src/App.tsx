@@ -20,6 +20,7 @@ import {
 import { TransferWorkflow } from './transfer/TransferWorkflow.js';
 import { CaregiverPortal } from './caregiver/CaregiverPortal.js';
 import { HealthcareWorkerPortal } from './healthcare/HealthcareWorkerPortal.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 
 // Pastel Patient Redesign Components matching Reference Flow
 import { BottomNav, PatientTab } from './components/patient/BottomNav.js';
@@ -451,10 +452,7 @@ const PatientAppInner: React.FC = () => {
           <CognitiveSessionSubFrame
             domain={activeSessionDomain}
             initialDifficulty={
-              activeSessionRestored?.currentDifficulty ||
-              (personalModel?.domainBeliefs as any)?.[activeSessionDomain]?.activeDifficulty ||
-              recommendation?.recommendedDifficulty ||
-              1
+              activeSessionRestored?.currentDifficulty || 1
             }
             totalQuestions={10}
             restoredSession={activeSessionRestored}
@@ -638,8 +636,10 @@ const PatientAppInner: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <LocalizationProvider>
-      <PatientAppInner />
-    </LocalizationProvider>
+    <ErrorBoundary>
+      <LocalizationProvider>
+        <PatientAppInner />
+      </LocalizationProvider>
+    </ErrorBoundary>
   );
 };

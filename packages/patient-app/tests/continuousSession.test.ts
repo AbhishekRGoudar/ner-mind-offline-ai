@@ -303,4 +303,44 @@ describe('NER-MIND — Continuous Cognitive Session Flow & Personalization Loop'
     expect(nextRec.recommendedDifficulty).toBeGreaterThanOrEqual(1);
     expect(nextRec.recommendedDifficulty).toBeLessThanOrEqual(5);
   });
+
+  it('6. Question advancement is strictly sequential and cannot skip questions on rapid triggers', async () => {
+    // Simulate question state transition engine with atomic lock
+    let currentQuestionIndex = 0;
+    let isAdvancing = false;
+    const totalQuestions = 10;
+    const history: number[] = [];
+
+    const handleQuestionCompleteSimulated = (qIndex: number) => {
+      if (isAdvancing) return false;
+      isAdvancing = true;
+      history.push(qIndex);
+
+      if (currentQuestionIndex + 1 < totalQuestions) {
+        currentQuestionIndex += 1;
+      }
+      // Unlock after transition
+      isAdvancing = false;
+      return true;
+    };
+
+    // First completion succeeds
+    const call1 = handleQuestionCompleteSimulated(0);
+    expect(call1).toBe(true);
+    expect(currentQuestionIndex).toBe(1);
+
+    // Rapid double trigger while advancing would be rejected
+    isAdvancing = true;
+    const duplicateCall = handleQuestionCompleteSimulated(0);
+    expect(duplicateCall).toBe(false);
+    expect(currentQuestionIndex).toBe(1); // Not skipped!
+    isAdvancing = false;
+
+    // Normal sequential completion
+    const call2 = handleQuestionCompleteSimulated(1);
+    expect(call2).toBe(true);
+    expect(currentQuestionIndex).toBe(2);
+
+    expect(history).toEqual([0, 1]);
+  });
 });

@@ -10,33 +10,48 @@ interface Props {
   onComplete: (observation: CognitiveObservation) => void;
   onExit: () => void;
   isSessionMode?: boolean;
+  sessionFingerprints?: string[];
 }
 
-export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode = false, onComplete, onExit, isSessionMode = false }) => {
+export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode = false, onComplete, onExit, isSessionMode = false, sessionFingerprints = [] }) => {
   const { language } = useLocalization();
   const [task, setTask] = useState<GeneratedCognitiveTask | null>(null);
+  const [displayCandidates, setDisplayCandidates] = useState<any[]>([]);
   const [phase, setPhase] = useState<'study' | 'recall' | 'result'>('study');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedSequence, setSelectedSequence] = useState<string[]>([]);
   const questionDisplayedAt = React.useRef<number>(performance.now());
   const [cuesUsed, setCuesUsed] = useState<number>(0);
+  const isSubmittedRef = React.useRef<boolean>(false);
+  const timerRef = React.useRef<any>(null);
 
   useEffect(() => {
+    isSubmittedRef.current = false;
     const recent = OfflineStorageService.getRecentTaskFingerprints(undefined, 'memory');
+    const combinedRecent = Array.from(new Set([...(sessionFingerprints || []), ...recent]));
     const boundedDiff = Math.max(1, Math.min(5, difficulty)) as 1 | 2 | 3 | 4 | 5;
     const generated = TaskGenerator.generateTask({
       domain: 'memory',
       difficulty: boundedDiff,
       masteryMode,
-      recentFingerprints: recent,
+      recentFingerprints: combinedRecent,
       language,
     });
 
     setTask(generated);
+    setDisplayCandidates(generated.payload.recallCandidates || []);
+    setSelectedSequence([]);
+    setPhase('study');
     questionDisplayedAt.current = performance.now();
     if (!isSessionMode) {
       SpeechService.speakDomainInstruction('memory');
     }
-  }, [difficulty, language]);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, [difficulty, language, sessionFingerprints]);
 
   if (!task) {
     return <div style={{ padding: 24, color: '#fff' }}>Generating personalized memory activity...</div>;
@@ -45,34 +60,58 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
   const { targetItems, recallCandidates } = task.payload;
 
   const handleStartRecall = () => {
+    // Thoroughly shuffle candidate items (targets + distractors) so image positions change completely
+    const pool = [...(task.payload.recallCandidates || displayCandidates)];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    setDisplayCandidates(pool);
+    setSelectedSequence([]);
     setPhase('recall');
+    questionDisplayedAt.current = performance.now();
     if (!isSessionMode) {
       SpeechService.speakDomainInstruction('memory');
     }
   };
 
   const handleToggleSelect = (item: any) => {
-    const next = new Set(selectedIds);
-    if (next.has(item.id)) {
-      next.delete(item.id);
+    if (phase !== 'recall' || isSubmittedRef.current) return;
+    const existsIdx = selectedSequence.indexOf(item.id);
+    if (existsIdx !== -1) {
+      // Remove item from sequence
+      setSelectedSequence(prev => prev.filter(id => id !== item.id));
     } else {
-      next.add(item.id);
+      if (selectedSequence.length >= targetItems.length) {
+        return; // Full sequence already selected
+      }
+      setSelectedSequence(prev => [...prev, item.id]);
       SpeechService.speak(item.name);
     }
-    setSelectedIds(next);
   };
 
   const handleGiveCue = () => {
+    if (phase !== 'recall' || isSubmittedRef.current) return;
     setCuesUsed(prev => prev + 1);
-    const missing = targetItems.find((t: any) => !selectedIds.has(t.id));
-    if (missing) {
-      SpeechService.speak(`Remember, one item was ${missing.name}.`);
+    const nextTargetIdx = selectedSequence.length;
+    const nextExpected = targetItems[nextTargetIdx];
+    if (nextExpected) {
+      SpeechService.speak(`Remember, item number ${nextTargetIdx + 1} was ${nextExpected.name}.`);
+    } else {
+      const missing = targetItems.find((t: any) => !selectedSequence.includes(t.id));
+      if (missing) {
+        SpeechService.speak(`Remember, one item was ${missing.name}.`);
+      }
     }
   };
 
   const handleSubmit = () => {
+    if (isSubmittedRef.current || phase === 'result') return;
+    isSubmittedRef.current = true;
+    setPhase('result');
+
     const elapsed = Math.max(0, Math.round(performance.now() - questionDisplayedAt.current));
-    const scoreResult = task.scoring(Array.from(selectedIds));
+    const scoreResult = task.scoring(selectedSequence);
     const profile = OfflineStorageService.getPatientProfile();
 
     // Record anti-repetition fingerprint in IndexedDB
@@ -104,11 +143,18 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
       SpeechService.speakFeedback(scoreResult.rawScore >= 0.8 ? 'correct' : 'incorrect');
     }
 
-    setPhase('result');
-    setTimeout(() => {
+    const delay = isSessionMode ? 1000 : 2200;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    timerRef.current = setTimeout(() => {
       onComplete(observation);
-    }, 2200);
+    }, delay);
   };
+
+  const isAllExactMatch = targetItems.length > 0 &&
+    selectedSequence.length === targetItems.length &&
+    targetItems.every((t: any, idx: number) => selectedSequence[idx] === t.id);
 
   return (
     <div className={isSessionMode ? '' : 'card accessible-card'} style={isSessionMode ? { maxWidth: '100%', margin: '0' } : { maxWidth: 800, margin: '20px auto' }}>
@@ -127,36 +173,73 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
         </div>
       )}
 
-      <h2 style={{ fontSize: 26, margin: '0 0 8px 0', color: 'var(--accent-cyan)' }}>
+      <h2 style={{ fontSize: 26, margin: '0 0 8px 0', color: '#123B63', fontWeight: 800 }}>
         {task.title}
       </h2>
-      <p style={{ fontSize: 18, color: 'var(--text-muted)', marginBottom: 20 }}>
+      <p style={{ fontSize: 18, color: '#475569', marginBottom: 20 }}>
         {task.instructions}
       </p>
 
-      {/* PHASE 1: STUDY ITEMS */}
+      {/* PHASE 1: STUDY ITEMS WITH SEQUENCE ORDER */}
       {phase === 'study' && (
         <div>
+          <div style={{
+            background: '#F0F9FF',
+            border: '2px solid #BAE6FD',
+            borderRadius: 14,
+            padding: '16px 20px',
+            marginBottom: 20,
+            boxShadow: '0 2px 8px rgba(3, 105, 161, 0.05)',
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#0369A1', marginBottom: 4, letterSpacing: '0.03em' }}>
+              STEP 1: OBSERVE & MEMORIZE THE SEQUENCE
+            </div>
+            <p style={{ fontSize: 18, color: '#0F172A', margin: 0, fontWeight: 600 }}>
+              Look at the {targetItems.length} items and remember the sequence they are shown in (from 1st to last):
+            </p>
+          </div>
+
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
             gap: 16,
             marginBottom: 24
           }}>
-            {targetItems.map((item: any) => (
+            {targetItems.map((item: any, idx: number) => (
               <div
                 key={item.id}
                 style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '2px solid rgba(56, 189, 248, 0.4)',
-                  borderRadius: 12,
-                  padding: 16,
+                  background: '#FFFFFF',
+                  border: '2.5px solid #0284C7',
+                  borderRadius: 16,
+                  padding: '20px 14px',
                   textAlign: 'center',
+                  boxShadow: '0 4px 12px rgba(2, 132, 199, 0.08)',
+                  position: 'relative',
                 }}
               >
-                <div style={{ fontSize: 48, marginBottom: 8 }}>{item.icon}</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{item.name}</div>
-                <div style={{ fontSize: 14, color: 'var(--accent-cyan)' }}>{item.localName}</div>
+                <div style={{
+                  position: 'absolute',
+                  top: 10,
+                  left: 10,
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  background: '#0284C7',
+                  color: '#FFFFFF',
+                  fontWeight: 900,
+                  fontSize: 18,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                }}>
+                  {idx + 1}
+                </div>
+                <div style={{ fontSize: 48, marginBottom: 8, marginTop: 6 }}>{item.icon}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: '#0F172A' }}>{item.name}</div>
+                <div style={{ fontSize: 14, color: '#0284C7', fontWeight: 700, marginTop: 2 }}>{item.localName}</div>
+                <div style={{ fontSize: 13, color: '#64748B', fontWeight: 600, marginTop: 4 }}>Order: #{idx + 1}</div>
               </div>
             ))}
           </div>
@@ -166,27 +249,56 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
             onClick={handleStartRecall}
             style={{ width: '100%', fontSize: 22, minHeight: 64 }}
           >
-            I Have Remembered These Items ➡️
+            I Have Remembered The Sequence ➡️
           </button>
         </div>
       )}
 
-      {/* PHASE 2: RECALL & RESULT REVIEW */}
+      {/* PHASE 2: RECALL IN SEQUENCE & RESULT REVIEW */}
       {(phase === 'recall' || phase === 'result') && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>
-              Selected: <strong>{selectedIds.size}</strong> of {targetItems.length}
+          <div style={{
+            background: '#FFF7DC',
+            border: '2px solid #F5C451',
+            borderRadius: 14,
+            padding: '16px 20px',
+            marginBottom: 20,
+            boxShadow: '0 2px 8px rgba(245, 196, 81, 0.08)',
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#8D6B00', marginBottom: 4, letterSpacing: '0.03em' }}>
+              STEP 2: TOUCH IN ORIGINAL SEQUENCE
+            </div>
+            <p style={{ fontSize: 18, color: '#17324D', margin: 0, fontWeight: 600 }}>
+              Now touch the items in the same sequence order (1st, 2nd, 3rd) shown before.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <span style={{ fontSize: 19, color: '#334155', fontWeight: 600 }}>
+              Selected in Sequence: <strong style={{ color: '#0F172A', fontWeight: 800 }}>{selectedSequence.length}</strong> of {targetItems.length}
             </span>
-            {phase === 'recall' && task.complexity.cueLevel > 0 && cuesUsed < task.complexity.cueLevel && (
-              <button
-                className="accessible-btn accessible-btn-secondary"
-                onClick={handleGiveCue}
-                style={{ minHeight: 48, padding: '6px 14px', fontSize: 16 }}
-              >
-                💡 Hint ({task.complexity.cueLevel - cuesUsed} left)
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              {phase === 'recall' && selectedSequence.length > 0 && (
+                <button
+                  type="button"
+                  className="accessible-btn accessible-btn-secondary"
+                  onClick={() => setSelectedSequence([])}
+                  style={{ minHeight: 44, padding: '4px 14px', fontSize: 15 }}
+                >
+                  ↺ Reset Order
+                </button>
+              )}
+              {phase === 'recall' && task.complexity.cueLevel > 0 && cuesUsed < task.complexity.cueLevel && (
+                <button
+                  type="button"
+                  className="accessible-btn accessible-btn-secondary"
+                  onClick={handleGiveCue}
+                  style={{ minHeight: 44, padding: '4px 14px', fontSize: 15 }}
+                >
+                  💡 Hint ({task.complexity.cueLevel - cuesUsed} left)
+                </button>
+              )}
+            </div>
           </div>
 
           <div style={{
@@ -195,25 +307,34 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
             gap: 16,
             marginBottom: 24
           }}>
-            {recallCandidates.map((item: any) => {
-              const isSelected = selectedIds.has(item.id);
-              const isTarget = targetItems.some((t: any) => t.id === item.id);
-              let borderStyle = isSelected ? '3px solid var(--accent-cyan)' : '2px solid rgba(255,255,255,0.1)';
-              let bgStyle = isSelected ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255,255,255,0.06)';
+            {displayCandidates.map((item: any) => {
+              const userOrderIdx = selectedSequence.indexOf(item.id);
+              const isSelected = userOrderIdx !== -1;
+              const targetOrderIdx = targetItems.findIndex((t: any) => t.id === item.id);
+              const isTarget = targetOrderIdx !== -1;
+              const isExactSequence = isSelected && isTarget && userOrderIdx === targetOrderIdx;
+
+              let borderStyle = isSelected ? '3px solid #0284C7' : '2px solid #CBD5E1';
+              let bgStyle = isSelected ? '#EFF6FF' : '#FFFFFF';
               let opacityStyle = 1.0;
 
               if (phase === 'result') {
-                if (isSelected && isTarget) {
+                if (isExactSequence) {
                   borderStyle = '3px solid #10B981';
-                  bgStyle = 'rgba(16, 185, 129, 0.25)';
+                  bgStyle = '#ECFDF5';
+                } else if (isSelected && isTarget) {
+                  borderStyle = '3px solid #F59E0B';
+                  bgStyle = '#FFFBEB';
                 } else if (isSelected && !isTarget) {
                   borderStyle = '3px solid #EF4444';
-                  bgStyle = 'rgba(239, 68, 68, 0.25)';
+                  bgStyle = '#FEF2F2';
                 } else if (!isSelected && isTarget) {
                   borderStyle = '3px dashed #F59E0B';
-                  bgStyle = 'rgba(245, 158, 11, 0.2)';
+                  bgStyle = '#FFFBEB';
                 } else {
-                  opacityStyle = 0.35;
+                  opacityStyle = 0.45;
+                  bgStyle = '#F8FAFC';
+                  borderStyle = '1.5px solid #E2E8F0';
                 }
               }
 
@@ -226,7 +347,7 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
                   style={{
                     background: bgStyle,
                     border: borderStyle,
-                    borderRadius: 12,
+                    borderRadius: 16,
                     padding: 16,
                     textAlign: 'center',
                     cursor: phase === 'recall' ? 'pointer' : 'default',
@@ -234,27 +355,66 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
                     transition: 'all 0.15s ease',
                     opacity: opacityStyle,
                     position: 'relative',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
                   }}
                 >
-                  <div style={{ fontSize: 48, marginBottom: 8 }}>{item.icon}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{item.name}</div>
-                  <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>{item.localName}</div>
-
-                  {phase === 'recall' && isSelected && (
-                    <div style={{ fontSize: 14, color: 'var(--accent-cyan)', marginTop: 4 }}>✓ Selected</div>
+                  {/* Sequence Position Badge */}
+                  {isSelected && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 10,
+                      left: 10,
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: phase === 'result' ? (isExactSequence ? '#10B981' : '#EF4444') : '#0284C7',
+                      color: '#FFFFFF',
+                      fontWeight: 900,
+                      fontSize: 18,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                    }}>
+                      {userOrderIdx + 1}
+                    </div>
                   )}
 
-                  {phase === 'result' && isSelected && isTarget && (
+                  <div style={{ fontSize: 48, marginBottom: 8, marginTop: isSelected ? 6 : 0 }}>{item.icon}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#0F172A' }}>{item.name}</div>
+                  <div style={{ fontSize: 14, color: '#64748B', fontWeight: 500 }}>{item.localName}</div>
+
+                  {phase === 'recall' && isSelected && (
+                    <div style={{ fontSize: 14, color: '#0284C7', fontWeight: 800, marginTop: 6 }}>
+                      Selected #{userOrderIdx + 1}
+                    </div>
+                  )}
+
+                  {phase === 'result' && isExactSequence && (
                     <div style={{
                       marginTop: 6,
                       background: '#10B981',
                       color: '#FFFFFF',
                       borderRadius: 6,
-                      padding: '2px 6px',
+                      padding: '3px 6px',
                       fontSize: 12,
                       fontWeight: 800,
                     }}>
-                      ✓ Correct Choice
+                      ✓ Correct Order #{userOrderIdx + 1}
+                    </div>
+                  )}
+
+                  {phase === 'result' && isSelected && isTarget && !isExactSequence && (
+                    <div style={{
+                      marginTop: 6,
+                      background: '#D97706',
+                      color: '#FFFFFF',
+                      borderRadius: 6,
+                      padding: '3px 6px',
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}>
+                      ⚠️ Selected #{userOrderIdx + 1} (Was #{targetOrderIdx + 1})
                     </div>
                   )}
 
@@ -264,11 +424,11 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
                       background: '#EF4444',
                       color: '#FFFFFF',
                       borderRadius: 6,
-                      padding: '2px 6px',
+                      padding: '3px 6px',
                       fontSize: 12,
                       fontWeight: 800,
                     }}>
-                      ✕ Wrong Item
+                      ✕ Not in Sequence
                     </div>
                   )}
 
@@ -278,11 +438,11 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
                       background: '#D97706',
                       color: '#FFFFFF',
                       borderRadius: 6,
-                      padding: '2px 6px',
+                      padding: '3px 6px',
                       fontSize: 12,
                       fontWeight: 800,
                     }}>
-                      ⚠️ Missed Target
+                      ⚠️ Missed #{targetOrderIdx + 1}
                     </div>
                   )}
                 </div>
@@ -293,12 +453,8 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
           {/* Answer Breakdown Banner */}
           {phase === 'result' && (
             <div style={{
-              backgroundColor: targetItems.every((t: any) => selectedIds.has(t.id)) && selectedIds.size === targetItems.length
-                ? '#DCFCE7' : '#FEE2E2',
-              border: `2px solid ${
-                targetItems.every((t: any) => selectedIds.has(t.id)) && selectedIds.size === targetItems.length
-                  ? '#10B981' : '#EF4444'
-              }`,
+              backgroundColor: isAllExactMatch ? '#DCFCE7' : '#FEE2E2',
+              border: `2px solid ${isAllExactMatch ? '#10B981' : '#EF4444'}`,
               color: '#17324D',
               padding: '16px 20px',
               borderRadius: 14,
@@ -309,35 +465,39 @@ export const MemoryShoppingRecall: React.FC<Props> = ({ difficulty, masteryMode 
               <div style={{
                 marginBottom: 8,
                 fontSize: 18,
-                color: targetItems.every((t: any) => selectedIds.has(t.id)) && selectedIds.size === targetItems.length ? '#166534' : '#991B1B'
+                color: isAllExactMatch ? '#166534' : '#991B1B'
               }}>
-                {targetItems.every((t: any) => selectedIds.has(t.id)) && selectedIds.size === targetItems.length
-                  ? '✅ All targets accurately recalled!'
-                  : '❌ Answer Review:'}
+                {isAllExactMatch
+                  ? '✅ All items recalled in perfect sequence order!'
+                  : '❌ Sequence Review:'}
               </div>
               <div style={{ fontSize: 15, fontWeight: 600, color: '#166534' }}>
-                • Correctly Recalled: {targetItems.filter((t: any) => selectedIds.has(t.id)).map((t: any) => t.name).join(', ') || 'None'}
+                • Presentation Sequence: {targetItems.map((t: any, idx: number) => `#${idx + 1} ${t.name}`).join(' ➔ ')}
               </div>
-              {targetItems.some((t: any) => !selectedIds.has(t.id)) && (
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#B45309', marginTop: 4 }}>
-                  • Missed Targets: {targetItems.filter((t: any) => !selectedIds.has(t.id)).map((t: any) => t.name).join(', ')}
-                </div>
-              )}
-              {recallCandidates.some((c: any) => !targetItems.some((t: any) => t.id === c.id) && selectedIds.has(c.id)) && (
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#DC2626', marginTop: 4 }}>
-                  • Wrong Selections: {recallCandidates.filter((c: any) => !targetItems.some((t: any) => t.id === c.id) && selectedIds.has(c.id)).map((c: any) => c.name).join(', ')}
-                </div>
-              )}
+              <div style={{ fontSize: 15, fontWeight: 600, color: isAllExactMatch ? '#166534' : '#DC2626', marginTop: 4 }}>
+                • Your Recalled Order: {selectedSequence.map((id: string, idx: number) => {
+                  const it = displayCandidates.find((c: any) => c.id === id);
+                  return `#${idx + 1} ${it?.name || id}`;
+                }).join(' ➔ ') || 'None selected'}
+              </div>
             </div>
           )}
 
           <button
             className="accessible-btn accessible-btn-primary"
             onClick={handleSubmit}
-            disabled={phase === 'result'}
-            style={{ width: '100%', fontSize: 22, minHeight: 64, opacity: phase === 'result' ? 0.7 : 1 }}
+            disabled={phase === 'result' || isSubmittedRef.current || selectedSequence.length === 0}
+            style={{
+              width: '100%',
+              fontSize: 22,
+              minHeight: 64,
+              opacity: (phase === 'result' || isSubmittedRef.current || selectedSequence.length === 0) ? 0.7 : 1,
+              cursor: (phase === 'result' || isSubmittedRef.current || selectedSequence.length === 0) ? 'default' : 'pointer',
+            }}
           >
-            {phase === 'result' ? 'Verifying Results...' : `Submit Memory Recall (${selectedIds.size} Chosen) ✓`}
+            {(phase === 'result' || isSubmittedRef.current)
+              ? 'Verifying Sequence...'
+              : `Submit Recalled Sequence (${selectedSequence.length}/${targetItems.length}) ✓`}
           </button>
         </div>
       )}

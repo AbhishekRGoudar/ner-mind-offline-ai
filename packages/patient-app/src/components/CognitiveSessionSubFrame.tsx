@@ -15,6 +15,7 @@ import { RecognitionHouseholdObjects } from '../games/RecognitionHouseholdObject
 import { CalculationMarketChange } from '../games/CalculationMarketChange.js';
 import { PlanningDaySchedule } from '../games/PlanningDaySchedule.js';
 import { useLocalization } from '../localization';
+import { ErrorBoundary } from './ErrorBoundary.js';
 
 export interface ActiveSessionState {
   sessionId: string;
@@ -115,9 +116,9 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
   const meta = DOMAIN_METADATA[domain];
 
   // Initialize session state
-  const [sessionId] = useState<string>(() => restoredSession?.sessionId || crypto.randomUUID());
+  const [sessionId, setSessionId] = useState<string>(() => restoredSession?.sessionId || crypto.randomUUID());
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(() => restoredSession?.currentQuestionIndex || 0);
-  const [startDifficulty] = useState<number>(() => restoredSession?.startDifficulty || initialDifficulty);
+  const [startDifficulty, setStartDifficulty] = useState<number>(() => restoredSession?.startDifficulty || initialDifficulty);
   const [currentDifficulty, setCurrentDifficulty] = useState<number>(() => restoredSession?.currentDifficulty || initialDifficulty);
   const [observations, setObservations] = useState<CognitiveObservation[]>(() => restoredSession?.observations || []);
   const [streak, setStreak] = useState<number>(() => restoredSession?.streak || 0);
@@ -217,6 +218,24 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
 
   const guidance = getAdaptiveGuidance();
 
+  // Ref locks to prevent duplicate question completions or race-conditioned skipping
+  const isAdvancingRef = React.useRef<boolean>(false);
+  const advanceTimerRef = React.useRef<any>(null);
+
+  // Reset advancing lock whenever question index transitions
+  useEffect(() => {
+    isAdvancingRef.current = false;
+  }, [currentQuestionIndex]);
+
+  // Clean up any pending advance timer on unmount
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current) {
+        clearTimeout(advanceTimerRef.current);
+      }
+    };
+  }, []);
+
   // Announce domain instruction once on session start
   useEffect(() => {
     if (currentQuestionIndex === 0 && !restoredSession) {
@@ -226,6 +245,12 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
 
   // Handle completion of a single question
   const handleQuestionComplete = async (obs: CognitiveObservation) => {
+    // Atomic lock to guarantee no question can be completed twice or skipped
+    if (isAdvancingRef.current) {
+      return;
+    }
+    isAdvancingRef.current = true;
+
     const isCorrect = obs.metrics.rawScore >= 0.8;
     const newStreak = isCorrect ? streak + 1 : 0;
     const newCorrectCount = isCorrect ? correctCount + 1 : correctCount;
@@ -245,14 +270,11 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
     const updatedModel = PersonalizationEngine.updatePersonalModel(currentModel, obs);
     await OfflineStorageService.savePersonalModel(updatedModel);
 
-    // 3. Evaluate difficulty adaptation
-    const domainBelief = updatedModel.domainBeliefs[domain];
-    if (domainBelief && domainBelief.activeDifficulty !== currentDifficulty) {
-      setCurrentDifficulty(domainBelief.activeDifficulty);
-    }
+    // 3. Keep difficulty locked for all 10 questions of the active session!
+    // Level progression occurs only after completing the full session.
 
     const recentFingerprints = OfflineStorageService.getRecentTaskFingerprints(undefined, domain);
-    setSessionFingerprints(recentFingerprints);
+    setSessionFingerprints(prev => Array.from(new Set([...prev, ...recentFingerprints, obs.taskId, `ctx:${obs.context}`])));
 
     // 4. Show calm feedback & speak localized encouragement
     setFeedbackMessage({
@@ -263,26 +285,28 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
     SpeechService.speakFeedback(isCorrect ? 'correct' : 'incorrect');
 
     // 5. Auto-advance after calm interval or transition to summary
-    setTimeout(async () => {
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+    }
+    advanceTimerRef.current = setTimeout(async () => {
       setFeedbackMessage(null);
-      if (currentQuestionIndex + 1 >= totalQuestions) {
+      if (updatedObsList.length >= totalQuestions) {
         // Session Complete
         localStorage.removeItem(STORAGE_KEY_ACTIVE_SESSION);
 
         // Evaluate session-level mastery and level progression (Level 1 -> 2, etc.)
-        const sessionAccuracy = totalQuestions > 0 ? (newCorrectCount / totalQuestions) : 0;
-        let finalDifficulty = currentDifficulty;
+        const finalSessionAccuracy = totalQuestions > 0 ? (newCorrectCount / totalQuestions) : 0;
+        let nextDiff = startDifficulty;
         let leveledUp = false;
 
         const latestModel = OfflineStorageService.getPersonalModel();
         if (latestModel && latestModel.domainBeliefs && latestModel.domainBeliefs[domain]) {
           const belief = latestModel.domainBeliefs[domain];
-          if (sessionAccuracy >= 0.70) {
-            // High performance (70%+ or 7+/10) guarantees level progression to next level
-            if (belief.activeDifficulty <= startDifficulty && belief.activeDifficulty < 5) {
-              const prev = belief.activeDifficulty;
-              finalDifficulty = Math.min(5, startDifficulty + 1);
-              belief.activeDifficulty = finalDifficulty;
+          if (finalSessionAccuracy >= 0.70) {
+            // High performance (70%+ or 7+/10) unlocks level progression to next level
+            if (startDifficulty < 5) {
+              nextDiff = Math.min(5, startDifficulty + 1);
+              belief.activeDifficulty = nextDiff;
               belief.cooldownRemainingSessions = 0;
               belief.lastUpdated = new Date().toISOString();
               leveledUp = true;
@@ -293,31 +317,31 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
               latestModel.adaptationHistory.unshift({
                 timestamp: new Date().toISOString(),
                 domain,
-                previousDifficulty: prev,
-                newDifficulty: finalDifficulty,
+                previousDifficulty: startDifficulty,
+                newDifficulty: nextDiff,
                 decision: 'increase',
-                mode: finalDifficulty === 5 ? 'maintenance' : 'progression',
-                rationale: `Completed 10-question session with ${(sessionAccuracy * 100).toFixed(0)}% accuracy (${newCorrectCount}/${totalQuestions}). Level up from Level ${prev} to Level ${finalDifficulty}!`,
+                mode: nextDiff === 5 ? 'maintenance' : 'progression',
+                rationale: `Completed 10-question session with ${(finalSessionAccuracy * 100).toFixed(0)}% accuracy (${newCorrectCount}/${totalQuestions}). Level up from Level ${startDifficulty} to Level ${nextDiff}!`,
               });
-            } else if (belief.activeDifficulty > startDifficulty) {
-              // Level up already occurred during session
-              finalDifficulty = belief.activeDifficulty;
-              leveledUp = true;
+            } else {
+              nextDiff = 5;
+              belief.activeDifficulty = 5;
             }
-          } else if (sessionAccuracy < 0.40 && belief.activeDifficulty > 1) {
-            finalDifficulty = Math.max(1, belief.activeDifficulty - 1);
-            belief.activeDifficulty = finalDifficulty;
+          } else if (finalSessionAccuracy < 0.40 && startDifficulty > 1) {
+            nextDiff = Math.max(1, startDifficulty - 1);
+            belief.activeDifficulty = nextDiff;
             belief.lastUpdated = new Date().toISOString();
           }
           await OfflineStorageService.savePersonalModel(latestModel);
         }
 
-        setCurrentDifficulty(finalDifficulty);
+        setCurrentDifficulty(nextDiff);
         if (leveledUp) {
-          setLevelUpEvent({ from: startDifficulty, to: finalDifficulty });
+          setLevelUpEvent({ from: startDifficulty, to: nextDiff });
         }
 
         setIsCompleted(true);
+        isAdvancingRef.current = false;
         SpeechService.stop();
         SpeechService.speakFeedback('summary', newCorrectCount, totalQuestions);
 
@@ -333,8 +357,35 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
         }
       } else {
         setCurrentQuestionIndex((prev: number) => prev + 1);
+        // Ensure atomic lock releases for next question
+        setTimeout(() => {
+          isAdvancingRef.current = false;
+        }, 80);
       }
     }, 1200);
+  };
+
+  const handleStartNextLevel = (nextDifficulty: number) => {
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+    }
+    isAdvancingRef.current = false;
+    localStorage.removeItem(STORAGE_KEY_ACTIVE_SESSION);
+    const newSessionId = crypto.randomUUID();
+    setSessionId(newSessionId);
+    setCurrentQuestionIndex(0);
+    setStartDifficulty(nextDifficulty);
+    setCurrentDifficulty(nextDifficulty);
+    setObservations([]);
+    setStreak(0);
+    setCorrectCount(0);
+    setTotalResponseTimeMs(0);
+    setSessionFingerprints([]);
+    setFeedbackMessage(null);
+    setLevelUpEvent(null);
+    setIsCompleted(false);
+    SpeechService.stop();
+    SpeechService.speakDomainInstruction(domain);
   };
 
   const handleConfirmExit = () => {
@@ -524,23 +575,169 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
           )}
         </div>
 
-        <button
-          className="accessible-btn accessible-btn-primary"
-          onClick={onExit}
-          style={{
-            width: '100%',
-            fontSize: 18,
-            minHeight: 56,
-            backgroundColor: '#42B883',
-            color: '#FFFFFF',
-            border: 'none',
-            borderRadius: 18,
-            fontWeight: 800,
-            cursor: 'pointer',
-          }}
-        >
-          Back to Daily Cognitive Training ⬅️
-        </button>
+        {/* PROMINENT NEXT LEVEL QUESTION & SELECTION CARD */}
+        <div style={{
+          background: (accuracy >= 70 && startDifficulty < 5)
+            ? 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)'
+            : (startDifficulty === 5 ? '#FFF7DC' : '#F8FAFC'),
+          border: `2.5px solid ${(accuracy >= 70 && startDifficulty < 5) ? '#10B981' : (startDifficulty === 5 ? '#F5C451' : '#CBD5E1')}`,
+          borderRadius: 20,
+          padding: '24px 22px',
+          marginBottom: 16,
+          textAlign: 'center',
+          boxShadow: (accuracy >= 70 && startDifficulty < 5)
+            ? '0 6px 20px rgba(16, 185, 129, 0.18)'
+            : '0 4px 12px rgba(0, 0, 0, 0.05)',
+        }}>
+          {accuracy >= 70 && startDifficulty < 5 ? (
+            <>
+              <div style={{ fontSize: 44, marginBottom: 8 }}>🎉 ⬆️ 🌟</div>
+              <h3 style={{ fontSize: 24, fontWeight: 900, color: '#065F46', margin: '0 0 8px 0' }}>
+                Level {startDifficulty} Completed!
+              </h3>
+              <p style={{ fontSize: 18, color: '#047857', fontWeight: 700, margin: '0 0 20px 0', lineHeight: 1.4 }}>
+                You scored {correctCount} of {totalQuestions} correct ({accuracy}%).
+                <br />
+                Do you want to continue to <strong>Level {startDifficulty + 1} ({DIFFICULTY_LABELS[startDifficulty + 1]})</strong>?
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <button
+                  className="accessible-btn accessible-btn-primary"
+                  onClick={() => handleStartNextLevel(startDifficulty + 1)}
+                  style={{
+                    width: '100%',
+                    fontSize: 20,
+                    minHeight: 60,
+                    backgroundColor: '#10B981',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 16,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)',
+                  }}
+                >
+                  Start Level {startDifficulty + 1} (10 Questions) ➡️
+                </button>
+                <button
+                  className="accessible-btn accessible-btn-secondary"
+                  onClick={onExit}
+                  style={{
+                    width: '100%',
+                    fontSize: 17,
+                    minHeight: 50,
+                    backgroundColor: '#FFFFFF',
+                    border: '2px solid #CBD5E1',
+                    color: '#334155',
+                    borderRadius: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Return to Games Menu 🏠
+                </button>
+              </div>
+            </>
+          ) : startDifficulty === 5 ? (
+            <>
+              <div style={{ fontSize: 44, marginBottom: 8 }}>👑 🌟 🏆</div>
+              <h3 style={{ fontSize: 24, fontWeight: 900, color: '#8D6B00', margin: '0 0 8px 0' }}>
+                Level 5 Mastery Completed!
+              </h3>
+              <p style={{ fontSize: 18, color: '#8D6B00', fontWeight: 700, margin: '0 0 20px 0', lineHeight: 1.4 }}>
+                Outstanding work! You scored {correctCount} of {totalQuestions} ({accuracy}%).
+                <br />
+                Do you want to continue with another Level 5 Mastery session?
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <button
+                  className="accessible-btn accessible-btn-primary"
+                  onClick={() => handleStartNextLevel(5)}
+                  style={{
+                    width: '100%',
+                    fontSize: 20,
+                    minHeight: 60,
+                    backgroundColor: '#D97706',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 16,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(217, 119, 6, 0.3)',
+                  }}
+                >
+                  Continue Level 5 Practice ➡️
+                </button>
+                <button
+                  className="accessible-btn accessible-btn-secondary"
+                  onClick={onExit}
+                  style={{
+                    width: '100%',
+                    fontSize: 17,
+                    minHeight: 50,
+                    backgroundColor: '#FFFFFF',
+                    border: '2px solid #CBD5E1',
+                    color: '#334155',
+                    borderRadius: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Return to Games Menu 🏠
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 44, marginBottom: 8 }}>💪 🔁 🌱</div>
+              <h3 style={{ fontSize: 24, fontWeight: 900, color: '#1E293B', margin: '0 0 8px 0' }}>
+                Level {startDifficulty} Session Finished
+              </h3>
+              <p style={{ fontSize: 18, color: '#475569', fontWeight: 600, margin: '0 0 20px 0', lineHeight: 1.4 }}>
+                You scored {correctCount} of {totalQuestions} ({accuracy}%).
+                <br />
+                Would you like to practice Level {startDifficulty} again to master these questions?
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <button
+                  className="accessible-btn accessible-btn-primary"
+                  onClick={() => handleStartNextLevel(startDifficulty)}
+                  style={{
+                    width: '100%',
+                    fontSize: 20,
+                    minHeight: 60,
+                    backgroundColor: '#1677D2',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 16,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(22, 119, 210, 0.3)',
+                  }}
+                >
+                  Practice Level {startDifficulty} Again (10 Questions) ↺
+                </button>
+                <button
+                  className="accessible-btn accessible-btn-secondary"
+                  onClick={onExit}
+                  style={{
+                    width: '100%',
+                    fontSize: 17,
+                    minHeight: 50,
+                    backgroundColor: '#FFFFFF',
+                    border: '2px solid #CBD5E1',
+                    color: '#334155',
+                    borderRadius: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Return to Games Menu 🏠
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -722,66 +919,74 @@ export const CognitiveSessionSubFrame: React.FC<Props> = ({
         }}>
           {/* CENTER: CURRENT QUESTION AREA */}
           <div style={{ minWidth: 0 }}>
-            {domain === 'memory' && (
-              <MemoryShoppingRecall
-                key={`${sessionId}-${currentQuestionIndex}`}
-                difficulty={currentDifficulty}
-                masteryMode={isMasteryMode}
-                onComplete={handleQuestionComplete}
-                onExit={() => setShowExitConfirm(true)}
-                isSessionMode={true}
-              />
-            )}
-            {domain === 'sequencing' && (
-              <SequencingTeaRoutine
-                key={`${sessionId}-${currentQuestionIndex}`}
-                difficulty={currentDifficulty}
-                masteryMode={isMasteryMode}
-                onComplete={handleQuestionComplete}
-                onExit={() => setShowExitConfirm(true)}
-                isSessionMode={true}
-              />
-            )}
-            {domain === 'attention' && (
-              <AttentionCraftPattern
-                key={`${sessionId}-${currentQuestionIndex}`}
-                difficulty={currentDifficulty}
-                masteryMode={isMasteryMode}
-                onComplete={handleQuestionComplete}
-                onExit={() => setShowExitConfirm(true)}
-                isSessionMode={true}
-              />
-            )}
-            {domain === 'recognition' && (
-              <RecognitionHouseholdObjects
-                key={`${sessionId}-${currentQuestionIndex}`}
-                difficulty={currentDifficulty}
-                masteryMode={isMasteryMode}
-                onComplete={handleQuestionComplete}
-                onExit={() => setShowExitConfirm(true)}
-                isSessionMode={true}
-              />
-            )}
-            {domain === 'calculation' && (
-              <CalculationMarketChange
-                key={`${sessionId}-${currentQuestionIndex}`}
-                difficulty={currentDifficulty}
-                masteryMode={isMasteryMode}
-                onComplete={handleQuestionComplete}
-                onExit={() => setShowExitConfirm(true)}
-                isSessionMode={true}
-              />
-            )}
-            {domain === 'planning' && (
-              <PlanningDaySchedule
-                key={`${sessionId}-${currentQuestionIndex}`}
-                difficulty={currentDifficulty}
-                masteryMode={isMasteryMode}
-                onComplete={handleQuestionComplete}
-                onExit={() => setShowExitConfirm(true)}
-                isSessionMode={true}
-              />
-            )}
+            <ErrorBoundary fallbackTitle="Cognitive Question">
+              {domain === 'memory' && (
+                <MemoryShoppingRecall
+                  key={`${sessionId}-${currentQuestionIndex}`}
+                  difficulty={currentDifficulty}
+                  masteryMode={isMasteryMode}
+                  sessionFingerprints={sessionFingerprints}
+                  onComplete={handleQuestionComplete}
+                  onExit={() => setShowExitConfirm(true)}
+                  isSessionMode={true}
+                />
+              )}
+              {domain === 'sequencing' && (
+                <SequencingTeaRoutine
+                  key={`${sessionId}-${currentQuestionIndex}`}
+                  difficulty={currentDifficulty}
+                  masteryMode={isMasteryMode}
+                  sessionFingerprints={sessionFingerprints}
+                  onComplete={handleQuestionComplete}
+                  onExit={() => setShowExitConfirm(true)}
+                  isSessionMode={true}
+                />
+              )}
+              {domain === 'attention' && (
+                <AttentionCraftPattern
+                  key={`${sessionId}-${currentQuestionIndex}`}
+                  difficulty={currentDifficulty}
+                  masteryMode={isMasteryMode}
+                  sessionFingerprints={sessionFingerprints}
+                  onComplete={handleQuestionComplete}
+                  onExit={() => setShowExitConfirm(true)}
+                  isSessionMode={true}
+                />
+              )}
+              {domain === 'recognition' && (
+                <RecognitionHouseholdObjects
+                  key={`${sessionId}-${currentQuestionIndex}`}
+                  difficulty={currentDifficulty}
+                  masteryMode={isMasteryMode}
+                  sessionFingerprints={sessionFingerprints}
+                  onComplete={handleQuestionComplete}
+                  onExit={() => setShowExitConfirm(true)}
+                  isSessionMode={true}
+                />
+              )}
+              {domain === 'calculation' && (
+                <CalculationMarketChange
+                  key={`${sessionId}-${currentQuestionIndex}`}
+                  difficulty={currentDifficulty}
+                  masteryMode={isMasteryMode}
+                  sessionFingerprints={sessionFingerprints}
+                  onComplete={handleQuestionComplete}
+                  onExit={() => setShowExitConfirm(true)}
+                  isSessionMode={true}
+                />
+              )}
+              {domain === 'planning' && (
+                <PlanningDaySchedule
+                  key={`${sessionId}-${currentQuestionIndex}`}
+                  difficulty={currentDifficulty}
+                  masteryMode={isMasteryMode}
+                  sessionFingerprints={sessionFingerprints}
+                  onComplete={handleQuestionComplete}
+                  onExit={() => setShowExitConfirm(true)}
+                  isSessionMode={true}
+                />
+              )}
+            </ErrorBoundary>
           </div>
 
           {/* RIGHT SIDE: REAL-TIME PERFORMANCE & ADAPTIVE GUIDANCE PANEL */}

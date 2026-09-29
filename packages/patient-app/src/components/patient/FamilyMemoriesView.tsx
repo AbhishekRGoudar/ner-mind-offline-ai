@@ -231,7 +231,15 @@ export const FamilyMemoriesView: React.FC<Props> = ({ onBack, onRefreshParent })
     }
   };
 
+  const isAdvancingRef = React.useRef<boolean>(false);
+
   const handleNextQuestion = () => {
+    if (isAdvancingRef.current) return;
+    isAdvancingRef.current = true;
+    setTimeout(() => {
+      isAdvancingRef.current = false;
+    }, 350);
+
     if (activeQuestionIdx + 1 >= Math.min(4, members.length)) {
       setShowActivitySummary(true);
     } else {
@@ -511,6 +519,7 @@ export const FamilyMemoriesView: React.FC<Props> = ({ onBack, onRefreshParent })
             <button
               type="button"
               onClick={handleNextQuestion}
+              disabled={isAdvancingRef.current}
               style={{
                 width: '100%',
                 backgroundColor: '#1677D2',
@@ -520,7 +529,8 @@ export const FamilyMemoriesView: React.FC<Props> = ({ onBack, onRefreshParent })
                 padding: '16px',
                 fontSize: 17,
                 fontWeight: 800,
-                cursor: 'pointer',
+                cursor: isAdvancingRef.current ? 'default' : 'pointer',
+                opacity: isAdvancingRef.current ? 0.7 : 1,
                 boxShadow: '0 4px 14px rgba(22, 119, 210, 0.25)',
               }}
             >

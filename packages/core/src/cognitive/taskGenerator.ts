@@ -107,7 +107,7 @@ export class TaskGenerator {
         ? prng.choice(DOMAIN_CROSS_CONTEXTS[domain])
         : undefined);
 
-      const candidateTask = this.buildTaskForDomain(domain, boundedDifficulty, effectiveContext, currentSeed, prng, effectiveLanguage);
+      const candidateTask = this.buildTaskForDomain(domain, boundedDifficulty, effectiveContext, currentSeed, prng, effectiveLanguage, Array.from(recentSet));
 
       // Validate structural safety
       const validationError = this.validateTaskStructure(candidateTask);
@@ -116,9 +116,12 @@ export class TaskGenerator {
         continue;
       }
 
-      // Check anti-repetition fingerprint
-      if (recentSet.has(candidateTask.fingerprint) && attempt < MAX_ATTEMPTS - 1) {
-        currentSeed = (currentSeed + 0x9e3779b9 + attempt) >>> 0;
+      // Check anti-repetition fingerprint, task ID, and templateId
+      const isDuplicate = recentSet.has(candidateTask.fingerprint) ||
+        recentSet.has(candidateTask.id) ||
+        (candidateTask.payload?.templateId && recentSet.has(candidateTask.payload.templateId));
+      if (isDuplicate && attempt < MAX_ATTEMPTS - 1) {
+        currentSeed = (currentSeed + 0x9e3779b9 + attempt + 1) >>> 0;
         continue;
       }
 
@@ -130,7 +133,7 @@ export class TaskGenerator {
     const fallbackContext = context || (masteryMode && boundedDifficulty === 5
       ? fallbackPrng.choice(DOMAIN_CROSS_CONTEXTS[domain])
       : undefined);
-    return this.buildTaskForDomain(domain, boundedDifficulty, fallbackContext, currentSeed, fallbackPrng, effectiveLanguage);
+    return this.buildTaskForDomain(domain, boundedDifficulty, fallbackContext, currentSeed, fallbackPrng, effectiveLanguage, Array.from(recentSet));
   }
 
   // --------------------------------------------------------------------------
@@ -143,21 +146,22 @@ export class TaskGenerator {
     preferredContext: TaskContext | undefined,
     seed: number,
     prng: PRNG,
-    language: SupportedLanguage = 'en'
+    language: SupportedLanguage = 'en',
+    recentFingerprints: string[] = []
   ): GeneratedCognitiveTask {
     switch (domain) {
       case 'memory':
-        return this.buildMemoryTask(difficulty, preferredContext, seed, prng, language);
+        return this.buildMemoryTask(difficulty, preferredContext, seed, prng, language, recentFingerprints);
       case 'attention':
-        return this.buildAttentionTask(difficulty, preferredContext, seed, prng, language);
+        return this.buildAttentionTask(difficulty, preferredContext, seed, prng, language, recentFingerprints);
       case 'sequencing':
-        return this.buildSequencingTask(difficulty, preferredContext, seed, prng, language);
+        return this.buildSequencingTask(difficulty, preferredContext, seed, prng, language, recentFingerprints);
       case 'recognition':
-        return this.buildRecognitionTask(difficulty, preferredContext, seed, prng, language);
+        return this.buildRecognitionTask(difficulty, preferredContext, seed, prng, language, recentFingerprints);
       case 'calculation':
-        return this.buildCalculationTask(difficulty, preferredContext, seed, prng, language);
+        return this.buildCalculationTask(difficulty, preferredContext, seed, prng, language, recentFingerprints);
       case 'planning':
-        return this.buildPlanningTask(difficulty, preferredContext, seed, prng, language);
+        return this.buildPlanningTask(difficulty, preferredContext, seed, prng, language, recentFingerprints);
     }
   }
 
@@ -167,14 +171,15 @@ export class TaskGenerator {
     preferredContext: TaskContext | undefined,
     seed: number,
     prng: PRNG,
-    language: SupportedLanguage = 'en'
+    language: SupportedLanguage = 'en',
+    recentFingerprints: string[] = []
   ): GeneratedCognitiveTask {
     // Difficulty progression:
-    // L1: 3 items, 0 distractors, cueLevel 3 (high assistance)
-    // L2: 4 items, 2 distractors, cueLevel 2 (moderate assistance)
-    // L3: 5 items, 4 distractors, cueLevel 1 (low assistance)
-    // L4: 6 items, 6 distractors, cueLevel 0 (no assistance)
-    // L5: 7 items, 8 distractors, cueLevel 0 (no assistance, cross-category interference)
+    // L1: 3 items, 3 distractors, cueLevel 3 (moderate/high assistance, 6 total recall cards)
+    // L2: 4 items, 3 distractors, cueLevel 2 (moderate assistance, 7 total recall cards)
+    // L3: 5 items, 4 distractors, cueLevel 1 (low assistance, 9 total recall cards)
+    // L4: 6 items, 6 distractors, cueLevel 0 (no assistance, 12 total recall cards)
+    // L5: 7 items, 8 distractors, cueLevel 0 (cross-category interference, 15 total recall cards)
     const itemCount = Math.min(7, 2 + difficulty);
     const distractorCount = (difficulty - 1) * 2;
     const cueLevel = Math.max(0, 3 - (difficulty - 1));
@@ -189,10 +194,36 @@ export class TaskGenerator {
       pool = REGIONAL_MEMORY_ITEMS;
     }
 
-    const shuffled = prng.shuffle(pool);
+    // Exclude memory items presented recently in this session
+    const recentItemIds = new Set<string>();
+    recentFingerprints.forEach(fp => {
+      const parts = fp.split(':');
+      if (parts.length >= 4) {
+        parts[3]?.split(',').forEach(id => recentItemIds.add(id));
+      }
+    });
+
+    const unpicked = pool.filter(it => !recentItemIds.has(it.id));
+    const poolToSample = unpicked.length >= (itemCount + distractorCount) ? unpicked : pool;
+
+    const shuffled = prng.shuffle(poolToSample);
     const targetItems = shuffled.slice(0, itemCount);
-    const distractors = shuffled.slice(itemCount, itemCount + distractorCount);
-    const recallCandidates = prng.shuffle([...targetItems, ...distractors]);
+    const remainingPool = pool.filter(p => !targetItems.some(t => t.id === p.id));
+    const distractors = prng.shuffle(remainingPool).slice(0, distractorCount);
+
+    // Ensure recallCandidates is strictly shuffled and target items are non-identically ordered
+    let recallCandidates = prng.shuffle([...targetItems, ...distractors]);
+    if (targetItems.length >= 2 && recallCandidates.length >= 2) {
+      let isSamePrefix = true;
+      let tries = 0;
+      while (isSamePrefix && tries < 15) {
+        isSamePrefix = targetItems.every((t, i) => t.id === recallCandidates[i]?.id);
+        if (isSamePrefix) {
+          recallCandidates = prng.shuffle(recallCandidates);
+          tries++;
+        }
+      }
+    }
 
     const contextUsed = preferredContext || targetItems[0]?.context || 'market';
 
@@ -252,14 +283,14 @@ export class TaskGenerator {
       return { ...c, name: localizedName, localName: localizedLocal };
     });
 
-    let title = `Market & Household Memory Recall (Level ${difficulty})`;
-    let instructions = `Study the ${itemCount} items carefully. When ready, touch the items you recall from memory.`;
+    let title = `Sequential Memory Recall (Level ${difficulty})`;
+    let instructions = `Study the ${itemCount} items and their order carefully. When ready, touch the items in the same sequence shown before.`;
     if (language === 'hi') {
-      title = `बाज़ार एवं घरेलू स्मृति स्मरण (स्तर ${difficulty})`;
-      instructions = `इन ${itemCount} वस्तुओं को ध्यान से देखें। तैयार होने पर, अपनी याददाश्त से वस्तुओं को स्पर्श करें।`;
+      title = `क्रमबद्ध स्मृति स्मरण (स्तर ${difficulty})`;
+      instructions = `इन ${itemCount} वस्तुओं और उनके क्रम को ध्यान से देखें। तैयार होने पर, उसी क्रम में वस्तुओं को स्पर्श करें जैसे पहले दिखाया गया था।`;
     } else if (language === 'kn') {
-      title = `ಮಾರುಕಟ್ಟೆ ಮತ್ತು ಮನೆಯ ನೆನಪಿನ ಶಕ್ತಿ (ಹಂತ ${difficulty})`;
-      instructions = `ಈ ${itemCount} ವಸ್ತುಗಳನ್ನು ಎಚ್ಚರಿಕೆಯಿಂದ ಗಮನಿಸಿ. ಸಿದ್ಧವಾದಾಗ, ನೆನಪಿನಲ್ಲಿರುವ ವಸ್ತುಗಳನ್ನು ಸ್ಪರ್ಶಿಸಿ.`;
+      title = `ಅನುಕ್ರಮ ನೆನಪಿನ ಶಕ್ತಿ (ಹಂತ ${difficulty})`;
+      instructions = `ಈ ${itemCount} ವಸ್ತುಗಳು ಮತ್ತು ಅವುಗಳ ಕ್ರಮವನ್ನು ಗಮನಿಸಿ. ಸಿದ್ಧವಾದಾಗ, ಮೊದಲು ತೋರಿಸಿದ ಕ್ರಮದಲ್ಲೇ ವಸ್ತುಗಳನ್ನು ಸ್ಪರ್ಶಿಸಿ.`;
     }
 
     return {
@@ -280,17 +311,20 @@ export class TaskGenerator {
         studyTimeLimitSec: Math.max(10, 25 - difficulty * 2),
       },
       scoring: (selectedIds: string[]) => {
-        const selectedSet = new Set(selectedIds || []);
-        let correct = 0;
-        targetItems.forEach(t => {
-          if (selectedSet.has(t.id)) correct++;
+        const selectedList = selectedIds || [];
+        const selectedSet = new Set(selectedList);
+        let correctItems = 0;
+        let correctSequenceMatches = 0;
+        targetItems.forEach((t, idx) => {
+          if (selectedSet.has(t.id)) correctItems++;
+          if (selectedList[idx] === t.id) correctSequenceMatches++;
         });
-        const rawScore = Number((correct / targetItems.length).toFixed(3));
+        const rawScore = Number((correctSequenceMatches / targetItems.length).toFixed(3));
         return {
           rawScore,
           itemsPresented: targetItems.length,
-          itemsCorrect: correct,
-          details: `Correctly recalled ${correct} of ${targetItems.length} items.`,
+          itemsCorrect: correctSequenceMatches,
+          details: `Recalled ${correctSequenceMatches} of ${targetItems.length} items in the exact presentation sequence.`,
         };
       },
     };
@@ -302,7 +336,8 @@ export class TaskGenerator {
     preferredContext: TaskContext | undefined,
     seed: number,
     prng: PRNG,
-    language: SupportedLanguage = 'en'
+    language: SupportedLanguage = 'en',
+    recentFingerprints: string[] = []
   ): GeneratedCognitiveTask {
     // L1: 2 targets, 4 distractors (distinct family, grid 6)
     // L2: 3 targets, 8 distractors (grid 11)
@@ -315,7 +350,19 @@ export class TaskGenerator {
     const interferenceLevel = difficulty;
     const cueLevel = Math.max(0, 3 - (difficulty - 1));
 
-    const targetMotif = prng.choice(REGIONAL_ATTENTION_MOTIFS);
+    // Exclude motifs presented recently
+    const recentMotifs = new Set<string>();
+    recentFingerprints.forEach(fp => {
+      const parts = fp.split(':');
+      if (parts[0] === 'att' && parts[2]) {
+        recentMotifs.add(parts[2]);
+      } else {
+        recentMotifs.add(fp);
+      }
+    });
+
+    const unpickedMotifs = REGIONAL_ATTENTION_MOTIFS.filter(m => !recentMotifs.has(m.id));
+    const targetMotif = prng.choice(unpickedMotifs.length > 0 ? unpickedMotifs : REGIONAL_ATTENTION_MOTIFS);
 
     // Pick distractors: at high difficulty, pick from same/similar visual group
     let distractorPool = REGIONAL_ATTENTION_MOTIFS.filter(m => m.id !== targetMotif.id);
@@ -377,7 +424,7 @@ export class TaskGenerator {
       }),
     };
 
-    const fingerprint = hashString(`att:${difficulty}:${targetMotif.id}:${targetCount}:${distractorCount}`);
+    const fingerprint = hashString(`att:${difficulty}:${targetMotif.id}`);
 
     let title = `Craft Pattern Attention & Cancellation (Level ${difficulty})`;
     let instructions = `Find and touch all ${targetCount} ${targetMotif.name} (${targetMotif.icon}) patterns among the craft motifs.`;
@@ -400,6 +447,7 @@ export class TaskGenerator {
       instructions,
       complexity,
       payload: {
+        templateId: targetMotif.id,
         targetMotif,
         tiles: shuffledTiles,
         targetCount,
@@ -434,7 +482,8 @@ export class TaskGenerator {
     preferredContext: TaskContext | undefined,
     seed: number,
     prng: PRNG,
-    language: SupportedLanguage = 'en'
+    language: SupportedLanguage = 'en',
+    recentFingerprints: string[] = []
   ): GeneratedCognitiveTask {
     // Progression:
     // L1: 3 steps, daily hygiene/drinking routine
@@ -442,7 +491,7 @@ export class TaskGenerator {
     // L3: 5 steps, cooking / gardening multi-step
     // L4: 6 steps, handloom weaving / weekly medicines with strict constraints
     // L5: 7 steps, Bihu feast / wild honey extraction with branching constraints
-    const template = generateParameterizedRoutine(difficulty, prng, preferredContext);
+    const template = generateParameterizedRoutine(difficulty, prng, preferredContext, recentFingerprints);
     const sequenceLength = template.steps.length;
     const reasoningSteps = difficulty;
     const ruleCount = difficulty >= 3 ? 2 : 1;
@@ -587,7 +636,8 @@ export class TaskGenerator {
     preferredContext: TaskContext | undefined,
     seed: number,
     prng: PRNG,
-    language: SupportedLanguage = 'en'
+    language: SupportedLanguage = 'en',
+    recentFingerprints: string[] = []
   ): GeneratedCognitiveTask {
     // Progression:
     // L1: 3 candidate options, high contrast categories (e.g. vessel vs apparel vs tool)
@@ -601,7 +651,20 @@ export class TaskGenerator {
     const interferenceLevel = difficulty;
     const cueLevel = Math.max(0, 3 - (difficulty - 1));
 
-    const target = prng.choice(REGIONAL_RECOGNITION_OBJECTS);
+    // Exclude objects presented recently
+    const recentObjectIds = new Set<string>();
+    recentFingerprints.forEach(fp => {
+      const parts = fp.split(':');
+      if (parts[0] === 'rec' && parts[2]) {
+        recentObjectIds.add(parts[2]);
+      } else {
+        recentObjectIds.add(fp);
+      }
+    });
+
+    const unpickedObjects = REGIONAL_RECOGNITION_OBJECTS.filter(o => !recentObjectIds.has(o.id));
+    const targetPool = unpickedObjects.length >= optionCount ? unpickedObjects : REGIONAL_RECOGNITION_OBJECTS;
+    const target = prng.choice(targetPool);
 
     let distractorPool = REGIONAL_RECOGNITION_OBJECTS.filter(o => o.id !== target.id);
     if (difficulty >= 3) {
@@ -649,8 +712,7 @@ export class TaskGenerator {
       }),
     };
 
-    const distractorIds = selectedDistractors.map(d => d.id).sort().join(',');
-    const fingerprint = hashString(`rec:${difficulty}:${target.id}:${distractorIds}`);
+    const fingerprint = hashString(`rec:${difficulty}:${target.id}`);
 
     const targetLoc = LOCALIZED_RECOGNITION_OBJECTS[target.id];
     const targetNameFormatted = targetLoc ? formatLocalizedPair(targetLoc.name, language) : target.name;
@@ -724,7 +786,8 @@ export class TaskGenerator {
     preferredContext: TaskContext | undefined,
     seed: number,
     prng: PRNG,
-    language: SupportedLanguage = 'en'
+    language: SupportedLanguage = 'en',
+    recentFingerprints: string[] = []
   ): GeneratedCognitiveTask {
     // Progression:
     // L1: 1 item, clean round numbers (e.g. ₹30 from ₹50 -> ₹20), 4 distinct options
@@ -741,15 +804,31 @@ export class TaskGenerator {
     let totalBill = 0;
     let paidAmount = 0;
 
-    const availableGoods = prng.shuffle(MARKET_GOODS);
+    // Exclude goods used in recent questions to guarantee variety
+    const recentGoodNames = new Set<string>();
+    recentFingerprints.forEach(fp => {
+      const parts = fp.split(':');
+      if (parts[0] === 'calc' && parts[2]) {
+        parts[2].split(';').forEach(s => {
+          const name = s.split('@')[0]?.replace(/^[0-9]+x/, '');
+          if (name) recentGoodNames.add(name);
+        });
+      } else {
+        recentGoodNames.add(fp);
+      }
+    });
+
+    const unpickedGoods = MARKET_GOODS.filter(g => !recentGoodNames.has(g.name) && !recentGoodNames.has(g.id));
+    const poolGoods = unpickedGoods.length >= 3 ? unpickedGoods : MARKET_GOODS;
+    const availableGoods = prng.shuffle(poolGoods);
 
     if (difficulty === 1) {
-      // 1 item, clean ₹10 price
+      // 1 item, clean ₹10 price, diverse denominations
       const g = availableGoods[0]!;
-      const unitPrice = prng.choice([20, 30, 40]);
+      const unitPrice = prng.choice([10, 20, 30, 40, 50]);
       itemsPurchased = [{ name: g.name, quantity: 1, unitPrice, totalPrice: unitPrice }];
       totalBill = unitPrice;
-      paidAmount = unitPrice === 40 ? 50 : 50;
+      paidAmount = unitPrice >= 40 ? 100 : 50;
       if (paidAmount <= totalBill) paidAmount = 100;
     } else if (difficulty === 2) {
       // 1 item with ₹5 increments
@@ -916,7 +995,8 @@ export class TaskGenerator {
     preferredContext: TaskContext | undefined,
     seed: number,
     prng: PRNG,
-    language: SupportedLanguage = 'en'
+    language: SupportedLanguage = 'en',
+    recentFingerprints: string[] = []
   ): GeneratedCognitiveTask {
     // Progression:
     // L1: 3 activities, non-conflicting schedule
@@ -924,7 +1004,7 @@ export class TaskGenerator {
     // L3: 5 activities with prerequisites (e.g. harvest before cooking)
     // L4: 6 activities with transit time, banking hours, multi-prerequisites
     // L5: 7 activities with multiple prerequisites & conflicting trade-offs
-    const template = generateProceduralSchedule(difficulty, prng, preferredContext);
+    const template = generateProceduralSchedule(difficulty, prng, preferredContext, recentFingerprints);
     const activityCount = template.activities.length;
     const reasoningSteps = difficulty;
     const ruleCount = template.rules.length;

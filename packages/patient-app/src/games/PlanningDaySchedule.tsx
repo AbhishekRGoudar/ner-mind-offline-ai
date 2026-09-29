@@ -10,23 +10,28 @@ interface Props {
   onComplete: (observation: CognitiveObservation) => void;
   onExit: () => void;
   isSessionMode?: boolean;
+  sessionFingerprints?: string[];
 }
 
-export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode = false, onComplete, onExit, isSessionMode = false }) => {
+export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode = false, onComplete, onExit, isSessionMode = false, sessionFingerprints = [] }) => {
   const { language } = useLocalization();
   const [task, setTask] = useState<GeneratedCognitiveTask | null>(null);
   const [items, setItems] = useState<any[]>([]);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  const isSubmittedRef = React.useRef<boolean>(false);
+  const timerRef = React.useRef<any>(null);
   const questionDisplayedAt = React.useRef<number>(performance.now());
 
   useEffect(() => {
+    isSubmittedRef.current = false;
     const recent = OfflineStorageService.getRecentTaskFingerprints(undefined, 'planning');
+    const combinedRecent = Array.from(new Set([...(sessionFingerprints || []), ...recent]));
     const boundedDiff = Math.max(1, Math.min(5, difficulty)) as 1 | 2 | 3 | 4 | 5;
     const generated = TaskGenerator.generateTask({
       domain: 'planning',
       difficulty: boundedDiff,
       masteryMode,
-      recentFingerprints: recent,
+      recentFingerprints: combinedRecent,
       language,
     });
 
@@ -37,7 +42,13 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
     if (!isSessionMode) {
       SpeechService.speakDomainInstruction('planning');
     }
-  }, [difficulty, language]);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, [difficulty, language, sessionFingerprints]);
 
   if (!task) {
     return <div style={{ padding: 24, color: '#fff' }}>Generating personalized daily schedule plan...</div>;
@@ -46,7 +57,7 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
   const { rules, activityCount } = task.payload;
 
   const moveUp = (idx: number) => {
-    if (isSubmitted || idx === 0) return;
+    if (isSubmitted || isSubmittedRef.current || idx === 0) return;
     const next = [...items];
     const temp = next[idx - 1];
     next[idx - 1] = next[idx];
@@ -55,7 +66,7 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
   };
 
   const moveDown = (idx: number) => {
-    if (isSubmitted || idx === items.length - 1) return;
+    if (isSubmitted || isSubmittedRef.current || idx === items.length - 1) return;
     const next = [...items];
     const temp = next[idx + 1];
     next[idx + 1] = next[idx];
@@ -64,7 +75,8 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
   };
 
   const handleFinish = () => {
-    if (isSubmitted) return;
+    if (isSubmittedRef.current || isSubmitted) return;
+    isSubmittedRef.current = true;
     setIsSubmitted(true);
 
     const elapsed = Math.max(0, Math.round(performance.now() - questionDisplayedAt.current));
@@ -101,9 +113,13 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
       SpeechService.speakFeedback(scoreResult.rawScore === 1.0 ? 'correct' : 'incorrect');
     }
 
-    setTimeout(() => {
+    const delay = isSessionMode ? 1000 : 2200;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    timerRef.current = setTimeout(() => {
       onComplete(observation);
-    }, 2200);
+    }, delay);
   };
 
   return (
@@ -123,27 +139,27 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
         </div>
       )}
 
-      <h2 style={{ fontSize: 26, margin: '0 0 8px 0', color: 'var(--accent-cyan)' }}>
+      <h2 style={{ fontSize: 26, margin: '0 0 8px 0', color: '#123B63', fontWeight: 800 }}>
         {task.title}
       </h2>
-      <p style={{ fontSize: 18, color: 'var(--text-muted)', marginBottom: 16 }}>
+      <p style={{ fontSize: 18, color: '#475569', marginBottom: 16 }}>
         {task.instructions}
       </p>
 
       {/* Rules Notice */}
       {rules && rules.length > 0 && (
         <div style={{
-          background: 'rgba(56, 189, 248, 0.1)',
-          borderLeft: '4px solid var(--accent-cyan)',
-          padding: '10px 16px',
-          borderRadius: 8,
+          background: '#F0F9FF',
+          borderLeft: '4px solid #0284C7',
+          padding: '12px 18px',
+          borderRadius: 10,
           marginBottom: 20,
         }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#0369A1', marginBottom: 6, letterSpacing: '0.03em' }}>
             PLANNING CONSTRAINTS & RULES:
           </div>
           {rules.map((rule: string, idx: number) => (
-            <div key={idx} style={{ fontSize: 16, color: '#fff' }}>• {rule}</div>
+            <div key={idx} style={{ fontSize: 16, color: '#0F172A', fontWeight: 600, margin: '3px 0' }}>• {rule}</div>
           ))}
         </div>
       )}
@@ -153,16 +169,19 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
         {items.map((item, idx) => {
           const correctIdx = task.payload.correctOrder?.findIndex((a: any) => a.id === item.id);
           const isCorrectPos = correctIdx === idx;
-          let borderStyle = '2px solid rgba(255,255,255,0.15)';
-          let bgStyle = 'rgba(255,255,255,0.06)';
+          let borderStyle = '2px solid #CBD5E1';
+          let bgStyle = '#FFFFFF';
+          let boxShadow = '0 2px 6px rgba(0,0,0,0.04)';
 
           if (isSubmitted) {
             if (isCorrectPos) {
-              borderStyle = '3px solid #10B981';
-              bgStyle = 'rgba(16, 185, 129, 0.2)';
+              borderStyle = '2.5px solid #10B981';
+              bgStyle = '#ECFDF5';
+              boxShadow = '0 4px 12px rgba(16, 185, 129, 0.15)';
             } else {
-              borderStyle = '3px solid #EF4444';
-              bgStyle = 'rgba(239, 68, 68, 0.2)';
+              borderStyle = '2.5px solid #EF4444';
+              bgStyle = '#FEF2F2';
+              boxShadow = '0 4px 12px rgba(239, 68, 68, 0.15)';
             }
           }
 
@@ -175,18 +194,23 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
                 gap: 16,
                 background: bgStyle,
                 border: borderStyle,
-                borderRadius: 12,
-                padding: '12px 16px',
+                borderRadius: 14,
+                padding: '14px 18px',
+                boxShadow,
                 position: 'relative',
+                transition: 'all 0.15s ease',
               }}
             >
               <div style={{
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 borderRadius: '50%',
-                background: isSubmitted ? (isCorrectPos ? '#10B981' : '#EF4444') : 'var(--accent-cyan)',
-                color: isSubmitted ? '#fff' : '#000',
-                fontWeight: 700,
+                background: isSubmitted
+                  ? (isCorrectPos ? '#10B981' : '#EF4444')
+                  : '#EFF6FF',
+                border: isSubmitted ? 'none' : '2px solid #3B82F6',
+                color: isSubmitted ? '#FFFFFF' : '#1D4ED8',
+                fontWeight: 800,
                 fontSize: 18,
                 display: 'flex',
                 alignItems: 'center',
@@ -196,20 +220,20 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
                 {idx + 1}
               </div>
 
-              <div style={{ fontSize: 32, flexShrink: 0 }}>{item.icon}</div>
+              <div style={{ fontSize: 36, flexShrink: 0 }}>{item.icon}</div>
 
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>{item.name}</div>
-                <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#0F172A' }}>{item.name}</div>
+                <div style={{ fontSize: 14, color: '#475569', marginTop: 2, fontWeight: 500 }}>
                   Target Slot: {item.timeSlot.replace(/_/g, ' ').toUpperCase()}
                 </div>
                 {isSubmitted && !isCorrectPos && (
-                  <div style={{ fontSize: 13, color: '#FCA5A5', fontWeight: 700, marginTop: 4 }}>
+                  <div style={{ fontSize: 13, color: '#B91C1C', fontWeight: 700, marginTop: 4 }}>
                     ✕ Misplaced: Should be in Slot #{correctIdx !== undefined ? correctIdx + 1 : 'different'}
                   </div>
                 )}
                 {isSubmitted && isCorrectPos && (
-                  <div style={{ fontSize: 13, color: '#6EE7B7', fontWeight: 700, marginTop: 4 }}>
+                  <div style={{ fontSize: 13, color: '#047857', fontWeight: 700, marginTop: 4 }}>
                     ✓ Correct Slot #{idx + 1}
                   </div>
                 )}
@@ -218,19 +242,39 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
               {!isSubmitted && (
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   <button
-                    className="accessible-btn accessible-btn-secondary"
+                    className="accessible-btn"
                     disabled={idx === 0}
                     onClick={() => moveUp(idx)}
-                    style={{ minHeight: 48, minWidth: 48, fontSize: 20, padding: 0 }}
+                    style={{
+                      minHeight: 48,
+                      minWidth: 48,
+                      fontSize: 22,
+                      padding: 0,
+                      background: idx === 0 ? '#E2E8F0' : '#FFFFFF',
+                      border: '2px solid #CBD5E1',
+                      color: idx === 0 ? '#94A3B8' : '#0F172A',
+                      cursor: idx === 0 ? 'not-allowed' : 'pointer',
+                      borderRadius: 10,
+                    }}
                     aria-label={`Move activity ${idx + 1} up`}
                   >
                     ▲
                   </button>
                   <button
-                    className="accessible-btn accessible-btn-secondary"
+                    className="accessible-btn"
                     disabled={idx === items.length - 1}
                     onClick={() => moveDown(idx)}
-                    style={{ minHeight: 48, minWidth: 48, fontSize: 20, padding: 0 }}
+                    style={{
+                      minHeight: 48,
+                      minWidth: 48,
+                      fontSize: 22,
+                      padding: 0,
+                      background: idx === items.length - 1 ? '#E2E8F0' : '#FFFFFF',
+                      border: '2px solid #CBD5E1',
+                      color: idx === items.length - 1 ? '#94A3B8' : '#0F172A',
+                      cursor: idx === items.length - 1 ? 'not-allowed' : 'pointer',
+                      borderRadius: 10,
+                    }}
                     aria-label={`Move activity ${idx + 1} down`}
                   >
                     ▼
@@ -274,10 +318,10 @@ export const PlanningDaySchedule: React.FC<Props> = ({ difficulty, masteryMode =
       <button
         className="accessible-btn accessible-btn-primary"
         onClick={handleFinish}
-        disabled={isSubmitted}
-        style={{ width: '100%', fontSize: 22, minHeight: 64, opacity: isSubmitted ? 0.7 : 1 }}
+        disabled={isSubmitted || isSubmittedRef.current}
+        style={{ width: '100%', fontSize: 22, minHeight: 64, opacity: (isSubmitted || isSubmittedRef.current) ? 0.7 : 1, cursor: (isSubmitted || isSubmittedRef.current) ? 'default' : 'pointer' }}
       >
-        {isSubmitted ? 'Verifying Results...' : `Save and Verify Daily Schedule (${activityCount} Activities) ✓`}
+        {(isSubmitted || isSubmittedRef.current) ? 'Verifying Results...' : `Save and Verify Daily Schedule (${activityCount} Activities) ✓`}
       </button>
     </div>
   );
